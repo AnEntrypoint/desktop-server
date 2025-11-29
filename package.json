@@ -1,0 +1,18 @@
+{
+  "name": "@sequential/desktop-server",
+  "version": "1.0.0",
+  "description": "Modular server for Sequential Desktop with app registry and plugin system",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "keywords": ["sequential", "desktop", "server", "apps"],
+  "author": "Sequential Ecosystem",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "fs-extra": "^11.1.1",
+    "ws": "^8.14.2"
+  }
+}
