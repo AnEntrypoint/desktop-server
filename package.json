@@ -5,7 +5,10 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test": "node --test tests/**/*.test.js",
+    "test:watch": "node --test tests/**/*.test.js --watch",
+    "test:coverage": "node --test tests/**/*.test.js --coverage"
   },
   "keywords": ["sequential", "desktop", "server", "apps"],
   "author": "Sequential Ecosystem",
