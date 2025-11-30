@@ -10,7 +10,7 @@ import { watch } from 'fs';
 import { WebSocketServer } from 'ws';
 import http from 'http';
 import { Worker } from 'worker_threads';
-import { validateFilePath, readJsonFile, writeJsonFile, getAllFiles, truncateString } from './lib/utils.js';
+import { validateFilePath, readJsonFile, writeJsonFile, getAllFiles, truncateString, escapeHtml, sanitizeInput, validateTaskName, validateFileName } from './lib/utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -701,25 +701,25 @@ async function main() {
       }
     });
 
-    app.post('/api/files/rename', async (req, res) => {
+    app.post('/api/files/rename', asyncHandler(async (req, res) => {
+      const { path: filePath, newName } = req.body;
+      if (!newName) throw createValidationError('newName is required', 'newName');
+
       try {
-        const { path: filePath, newName } = req.body;
-        if (!newName) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'newName is required'));
-        if (typeof newName !== 'string' || newName.includes('/') || newName.includes('\\') || newName.startsWith('.')) {
-          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Invalid filename: contains invalid characters'));
-        }
-        const realPath = validateFilePath(filePath);
-        const dir = path.dirname(realPath);
-        const newPath = path.join(dir, newName);
-        validateFilePath(newPath);
-        await fs.rename(realPath, newPath);
-        const newRelativePath = filePath.substring(0, filePath.lastIndexOf('/') + 1) + newName;
-        broadcastToFileSubscribers({ type: 'file-renamed', oldPath: filePath, newPath: newRelativePath, timestamp: new Date().toISOString() });
-        res.json({ oldPath: realPath, newPath: newPath, success: true });
-      } catch (error) {
-        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
+        validateFileName(newName);
+      } catch (e) {
+        throw createValidationError(e.message, 'newName');
       }
-    });
+
+      const realPath = validateFilePath(filePath);
+      const dir = path.dirname(realPath);
+      const newPath = path.join(dir, newName);
+      validateFilePath(newPath);
+      await fs.rename(realPath, newPath);
+      const newRelativePath = filePath.substring(0, filePath.lastIndexOf('/') + 1) + newName;
+      broadcastToFileSubscribers({ type: 'file-renamed', oldPath: filePath, newPath: newRelativePath, timestamp: new Date().toISOString() });
+      res.json({ oldPath: realPath, newPath: newPath, success: true });
+    }));
 
     app.post('/api/files/copy', async (req, res) => {
       try {
@@ -762,12 +762,16 @@ async function main() {
     }));
 
     app.post('/api/tasks/:taskName/run', asyncHandler(async (req, res) => {
-      const { input } = req.body;
+      let { input } = req.body;
       const { taskName } = req.params;
 
-      if (!taskName || typeof taskName !== 'string') {
-        throw createValidationError('Task name must be a non-empty string', 'taskName');
+      try {
+        validateTaskName(taskName);
+      } catch (e) {
+        throw createValidationError(e.message, 'taskName');
       }
+
+      input = sanitizeInput(input || {});
 
       const taskDir = path.join(process.cwd(), 'tasks', taskName);
       const realTaskDir = path.resolve(taskDir);
