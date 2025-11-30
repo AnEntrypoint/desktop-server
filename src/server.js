@@ -62,7 +62,9 @@ async function main() {
         'app-code-editor',
         'app-tool-editor',
         'app-task-debugger',
-        'app-flow-debugger'
+        'app-flow-debugger',
+        'app-run-observer',
+        'app-file-browser'
       ]
     });
 
