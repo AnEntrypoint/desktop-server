@@ -10,6 +10,7 @@ import { watch } from 'fs';
 import { WebSocketServer } from 'ws';
 import http from 'http';
 import { Worker } from 'worker_threads';
+import { validateFilePath, readJsonFile, writeJsonFile, getAllFiles, truncateString } from './lib/utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -91,19 +92,6 @@ function createErrorResponse(code, message, details = {}) {
     },
     timestamp: new Date().toISOString()
   };
-}
-
-function validateFilePath(filePath) {
-  if (!filePath || typeof filePath !== 'string') {
-    throw new Error('Invalid file path');
-  }
-  const realPath = path.resolve(filePath);
-  const cwd = path.resolve(process.cwd());
-  const relative = path.relative(cwd, realPath);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('Access denied: path traversal detected');
-  }
-  return realPath;
 }
 
 async function executeTaskWithTimeout(taskName, code, input, timeoutMs = 30000) {
