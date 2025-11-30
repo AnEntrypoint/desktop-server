@@ -76,7 +76,7 @@ function broadcastToTaskSubscribers(taskName, message) {
 function broadcastToFileSubscribers(message) {
   const data = JSON.stringify(message);
   fileSubscribers.forEach((ws) => {
-    if (ws.readyState === 1) {
+    if (ws.readyState === WebSocket.OPEN) {
       ws.send(data);
     }
   });
@@ -432,6 +432,10 @@ async function main() {
       }
     });
 
+    app.get('/api/files/current-path', (req, res) => {
+      res.json({ path: process.cwd() });
+    });
+
     app.get('/api/files/list', async (req, res) => {
       try {
         const dir = req.query.dir || process.cwd();
@@ -517,6 +521,9 @@ async function main() {
       try {
         const { path: filePath, newName } = req.body;
         if (!newName) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'newName is required'));
+        if (typeof newName !== 'string' || newName.includes('/') || newName.includes('\\') || newName.startsWith('.')) {
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Invalid filename: contains invalid characters'));
+        }
         const realPath = validateFilePath(filePath);
         const dir = path.dirname(realPath);
         const newPath = path.join(dir, newName);
@@ -542,7 +549,7 @@ async function main() {
         broadcastToFileSubscribers({ type: 'file-copied', sourcePath: filePath, destPath: destPath, timestamp: new Date().toISOString() });
         res.json({ sourcePath: realPath, destPath: realDest, success: true });
       } catch (error) {
-        res.status(500).json(createErrorResponse('INTERNAL_ERROR', error.message));
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
       }
     });
 
@@ -863,11 +870,6 @@ async function main() {
 
     app.get('/api/metrics', async (req, res) => {
       try {
-        const runs = await (new Promise((resolve, reject) => {
-          const next = () => {};
-          req.url = '/api/runs';
-          app._router.handle(req, res);
-        }));
         const allRuns = [];
         const tasksDir = path.join(process.cwd(), 'tasks');
         if (fs.existsSync(tasksDir)) {
