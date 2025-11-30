@@ -9,6 +9,7 @@ import { createRequire } from 'module';
 import { watch } from 'fs';
 import { WebSocketServer } from 'ws';
 import http from 'http';
+import { Worker } from 'worker_threads';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -26,6 +27,7 @@ const ZELLOUS_DATA_DIR = process.env.ZELLOUS_DATA || path.join(HOME_DIR, '.zello
 
 const runSubscribers = new Map();
 const taskSubscribers = new Map();
+const fileSubscribers = new Set();
 const activeTasks = new Map();
 
 async function ensureDirectories() {
@@ -67,6 +69,63 @@ function broadcastToTaskSubscribers(taskName, message) {
   taskSubscribers.get(taskName).forEach((ws) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(data);
+    }
+  });
+}
+
+function broadcastToFileSubscribers(message) {
+  const data = JSON.stringify(message);
+  fileSubscribers.forEach((ws) => {
+    if (ws.readyState === 1) {
+      ws.send(data);
+    }
+  });
+}
+
+function createErrorResponse(code, message, details = {}) {
+  return {
+    error: {
+      code,
+      message,
+      details
+    },
+    timestamp: new Date().toISOString()
+  };
+}
+
+function validateFilePath(filePath) {
+  if (!filePath || typeof filePath !== 'string') {
+    throw new Error('Invalid file path');
+  }
+  const realPath = path.resolve(filePath);
+  const cwd = path.resolve(process.cwd());
+  const relative = path.relative(cwd, realPath);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Access denied: path traversal detected');
+  }
+  return realPath;
+}
+
+async function executeTaskWithTimeout(taskName, code, input, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`Task execution timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    try {
+      const fn = new Function('fetch', 'input', `${code}; return myTask(input);`);
+      Promise.resolve(fn(fetch, input || {}))
+        .then(result => {
+          clearTimeout(timeout);
+          resolve(result);
+        })
+        .catch(error => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+    } catch (error) {
+      clearTimeout(timeout);
+      reject(error);
     }
   });
 }
@@ -116,7 +175,7 @@ async function main() {
         res.json(status);
       } catch (error) {
         console.error('Status error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -124,13 +183,13 @@ async function main() {
       try {
         const { instruction } = req.body;
         if (!instruction) {
-          return res.status(400).json({ error: 'instruction required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'instruction is required'));
         }
         const result = await kit.run(instruction);
         res.json(result);
       } catch (error) {
         console.error('Run error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -138,13 +197,13 @@ async function main() {
       try {
         const { instruction } = req.body;
         if (!instruction) {
-          return res.status(400).json({ error: 'instruction required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'instruction is required'));
         }
         const result = await kit.exec(instruction);
         res.json({ output: result, success: true });
       } catch (error) {
         console.error('Exec error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -154,7 +213,7 @@ async function main() {
         res.json(history);
       } catch (error) {
         console.error('History error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -162,13 +221,13 @@ async function main() {
       try {
         const { ref } = req.body;
         if (!ref) {
-          return res.status(400).json({ error: 'ref required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'ref is required'));
         }
         await kit.checkout(ref);
         res.json({ success: true, ref });
       } catch (error) {
         console.error('Checkout error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -178,7 +237,7 @@ async function main() {
         res.json(tags);
       } catch (error) {
         console.error('Tags error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -186,13 +245,13 @@ async function main() {
       try {
         const { name, ref } = req.body;
         if (!name) {
-          return res.status(400).json({ error: 'name required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'name is required'));
         }
         kit.tag(name, ref);
         res.json({ success: true, name, ref });
       } catch (error) {
         console.error('Tag error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -201,7 +260,7 @@ async function main() {
         const { hash } = req.params;
         const layerPath = path.join(STATEKIT_DIR, 'layers', hash);
         if (!fs.existsSync(layerPath)) {
-          return res.status(404).json({ error: 'Layer not found' });
+          return res.status(404).json(createErrorResponse('LAYER_NOT_FOUND', 'Layer not found'));
         }
         const files = [];
         const getAllFiles = (dir, base = '') => {
@@ -221,7 +280,7 @@ async function main() {
         res.json({ hash, files, size: stats.size || 0 });
       } catch (error) {
         console.error('Inspect error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
@@ -229,7 +288,7 @@ async function main() {
       try {
         const { file, hash1, hash2 } = req.body;
         if (!file || !hash1 || !hash2) {
-          return res.status(400).json({ error: 'file, hash1, and hash2 required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'file, hash1, and hash2 are required'));
         }
         const file1Path = path.join(STATEKIT_DIR, 'layers', hash1, file);
         const file2Path = path.join(STATEKIT_DIR, 'layers', hash2, file);
@@ -238,17 +297,14 @@ async function main() {
         res.json({ file, content1, content2 });
       } catch (error) {
         console.error('Diff error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('SEQUENTIAL_OS_ERROR', error.message));
       }
     });
 
     app.get('/api/files/list', async (req, res) => {
       try {
         const dir = req.query.dir || process.cwd();
-        const realPath = path.resolve(dir);
-        if (!realPath.startsWith(process.cwd())) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
+        const realPath = validateFilePath(dir);
         const files = await fs.readdir(realPath, { withFileTypes: true });
         const items = await Promise.all(files.map(async (file) => {
           const filePath = path.join(realPath, file.name);
@@ -263,77 +319,99 @@ async function main() {
         }));
         res.json({ directory: realPath, files: items.sort((a, b) => a.name.localeCompare(b.name)) });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
       }
     });
 
     app.get('/api/files/read', async (req, res) => {
       try {
         const filePath = req.query.path;
-        if (!filePath) return res.status(400).json({ error: 'path required' });
-        const realPath = path.resolve(filePath);
-        if (!realPath.startsWith(process.cwd())) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
+        const realPath = validateFilePath(filePath);
         const stat = await fs.stat(realPath);
         if (stat.isDirectory()) {
-          return res.status(400).json({ error: 'Cannot read directory' });
+          return res.status(400).json(createErrorResponse('INVALID_OPERATION', 'Cannot read directory'));
         }
         if (stat.size > 10 * 1024 * 1024) {
-          return res.status(400).json({ error: 'File too large (max 10MB)' });
+          return res.status(400).json(createErrorResponse('FILE_TOO_LARGE', 'File too large (max 10MB)'));
         }
         const content = await fs.readFile(realPath, 'utf8');
         res.json({ path: realPath, size: stat.size, content, modified: stat.mtime });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
       }
     });
 
     app.post('/api/files/write', async (req, res) => {
       try {
         const { path: filePath, content } = req.body;
-        if (!filePath || content === undefined) {
-          return res.status(400).json({ error: 'path and content required' });
+        if (content === undefined) {
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Content is required'));
         }
-        const realPath = path.resolve(filePath);
-        if (!realPath.startsWith(process.cwd())) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
+        const realPath = validateFilePath(filePath);
         await fs.ensureDir(path.dirname(realPath));
+        const isNew = !fs.existsSync(realPath);
         await fs.writeFile(realPath, content, 'utf8');
+        broadcastToFileSubscribers({ type: isNew ? 'file-created' : 'file-modified', path: filePath, timestamp: new Date().toISOString() });
         res.json({ path: realPath, size: content.length, success: true });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
       }
     });
 
     app.post('/api/files/mkdir', async (req, res) => {
       try {
         const { path: dirPath } = req.body;
-        if (!dirPath) return res.status(400).json({ error: 'path required' });
-        const realPath = path.resolve(dirPath);
-        if (!realPath.startsWith(process.cwd())) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
+        const realPath = validateFilePath(dirPath);
         await fs.ensureDir(realPath);
+        broadcastToFileSubscribers({ type: 'directory-created', path: dirPath, timestamp: new Date().toISOString() });
         res.json({ path: realPath, success: true });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
       }
     });
 
     app.delete('/api/files', async (req, res) => {
       try {
-        const filePath = req.query.path;
-        if (!filePath) return res.status(400).json({ error: 'path required' });
-        const realPath = path.resolve(filePath);
-        if (!realPath.startsWith(process.cwd())) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
+        const filePath = req.query.path || req.body?.path;
+        const realPath = validateFilePath(filePath);
         await fs.remove(realPath);
+        broadcastToFileSubscribers({ type: 'file-deleted', path: filePath, timestamp: new Date().toISOString() });
         res.json({ path: realPath, success: true });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
+      }
+    });
+
+    app.post('/api/files/rename', async (req, res) => {
+      try {
+        const { path: filePath, newName } = req.body;
+        if (!newName) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'newName is required'));
+        const realPath = validateFilePath(filePath);
+        const dir = path.dirname(realPath);
+        const newPath = path.join(dir, newName);
+        validateFilePath(newPath);
+        await fs.rename(realPath, newPath);
+        const newRelativePath = filePath.substring(0, filePath.lastIndexOf('/') + 1) + newName;
+        broadcastToFileSubscribers({ type: 'file-renamed', oldPath: filePath, newPath: newRelativePath, timestamp: new Date().toISOString() });
+        res.json({ oldPath: realPath, newPath: newPath, success: true });
+      } catch (error) {
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
+      }
+    });
+
+    app.post('/api/files/copy', async (req, res) => {
+      try {
+        const { path: filePath, newPath: destPath } = req.body;
+        if (!filePath) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'path is required'));
+        if (!destPath) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'newPath is required'));
+        const realPath = validateFilePath(filePath);
+        const realDest = validateFilePath(destPath);
+        await fs.ensureDir(path.dirname(realDest));
+        await fs.copy(realPath, realDest);
+        broadcastToFileSubscribers({ type: 'file-copied', sourcePath: filePath, destPath: destPath, timestamp: new Date().toISOString() });
+        res.json({ sourcePath: realPath, destPath: realDest, success: true });
+      } catch (error) {
+        res.status(500).json(createErrorResponse('INTERNAL_ERROR', error.message));
       }
     });
 
@@ -365,25 +443,37 @@ async function main() {
       try {
         const { input } = req.body;
         const taskName = req.params.taskName;
+
+        if (!taskName || typeof taskName !== 'string') {
+          return res.status(400).json(createErrorResponse('INVALID_TASK_NAME', 'Task name must be a non-empty string'));
+        }
+
         const taskDir = path.join(process.cwd(), 'tasks', taskName);
+        const realTaskDir = path.resolve(taskDir);
+        if (!realTaskDir.startsWith(process.cwd())) {
+          return res.status(403).json(createErrorResponse('ACCESS_DENIED', 'Access to task directory denied'));
+        }
+
         const codePath = path.join(taskDir, 'code.js');
         if (!fs.existsSync(codePath)) {
-          return res.status(404).json({ error: 'Task not found' });
+          return res.status(404).json(createErrorResponse('TASK_NOT_FOUND', `Task '${taskName}' not found`));
         }
+
         const runId = Date.now().toString();
         const startTime = Date.now();
         activeTasks.set(runId, { taskName, startTime });
         broadcastToRunSubscribers({ type: 'run-started', runId, taskName, timestamp: new Date().toISOString() });
+
         let output = null, status = 'success', error = null;
         try {
           const code = fs.readFileSync(codePath, 'utf8');
-          const fn = new Function('fetch', 'input', `${code}; return myTask(input);`);
-          output = await fn(fetch, input || {});
+          output = await executeTaskWithTimeout(taskName, code, input, 30000);
         } catch (execError) {
           status = 'error';
           error = execError.message;
           output = { error: error, stack: execError.stack };
         }
+
         const duration = Date.now() - startTime;
         const result = { runId, status, input, output, error, duration, timestamp: new Date().toISOString() };
         const runsDir = path.join(taskDir, 'runs');
@@ -394,7 +484,7 @@ async function main() {
         broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });
         res.json(result);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('INTERNAL_ERROR', error.message));
       }
     });
 
@@ -417,7 +507,7 @@ async function main() {
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         res.json(runs);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('TASK_ERROR', error.message));
       }
     });
 
@@ -425,12 +515,12 @@ async function main() {
       try {
         const runPath = path.join(process.cwd(), 'tasks', req.params.taskName, 'runs', `${req.params.runId}.json`);
         if (!fs.existsSync(runPath)) {
-          return res.status(404).json({ error: 'Run not found' });
+          return res.status(404).json(createErrorResponse('RUN_NOT_FOUND', 'Run not found'));
         }
         const run = JSON.parse(fs.readFileSync(runPath, 'utf8'));
         res.json(run);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('TASK_ERROR', error.message));
       }
     });
 
@@ -454,7 +544,7 @@ async function main() {
         }
         res.json(flows);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FLOW_ERROR', error.message));
       }
     });
 
@@ -462,12 +552,12 @@ async function main() {
       try {
         const graphPath = path.join(process.cwd(), 'tasks', req.params.flowId, 'graph.json');
         if (!fs.existsSync(graphPath)) {
-          return res.status(404).json({ error: 'Flow not found' });
+          return res.status(404).json(createErrorResponse('FLOW_NOT_FOUND', 'Flow not found'));
         }
         const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
         res.json({ id: req.params.flowId, graph });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FLOW_ERROR', error.message));
       }
     });
 
@@ -475,7 +565,7 @@ async function main() {
       try {
         const { id, name, states } = req.body;
         if (!id || !name) {
-          return res.status(400).json({ error: 'id and name required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'id and name are required'));
         }
         const taskDir = path.join(process.cwd(), 'tasks', id);
         await fs.ensureDir(taskDir);
@@ -505,7 +595,7 @@ async function main() {
         }
         res.json({ success: true, id, message: `Flow saved to ${taskDir}` });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FLOW_ERROR', error.message));
       }
     });
 
@@ -513,7 +603,7 @@ async function main() {
       try {
         const { path: filePath, content } = req.body;
         if (!filePath || content === undefined) {
-          return res.status(400).json({ error: 'path and content required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'path and content are required'));
         }
         const fullPath = path.join(process.cwd(), filePath);
         const dir = path.dirname(fullPath);
@@ -521,7 +611,7 @@ async function main() {
         await fs.writeFile(fullPath, content, 'utf8');
         res.json({ success: true, path: filePath, message: 'File saved successfully' });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('FILE_ERROR', error.message));
       }
     });
 
@@ -543,7 +633,7 @@ async function main() {
           .filter(Boolean);
         res.json(tools);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('TOOL_ERROR', error.message));
       }
     });
 
@@ -551,7 +641,7 @@ async function main() {
       try {
         const { name, definition } = req.body;
         if (!name) {
-          return res.status(400).json({ error: 'name required' });
+          return res.status(400).json(createErrorResponse('INVALID_INPUT', 'name is required'));
         }
         const toolsDir = path.join(process.cwd(), '.tools');
         await fs.ensureDir(toolsDir);
@@ -559,7 +649,7 @@ async function main() {
         await fs.writeJSON(path.join(toolsDir, `${name}.json`), tool);
         res.json(tool);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('TOOL_ERROR', error.message));
       }
     });
 
@@ -569,13 +659,13 @@ async function main() {
         const toolsDir = path.join(process.cwd(), '.tools');
         const toolPath = path.join(toolsDir, `${req.params.id}.json`);
         if (!fs.existsSync(toolPath)) {
-          return res.status(404).json({ error: 'Tool not found' });
+          return res.status(404).json(createErrorResponse('TOOL_NOT_FOUND', 'Tool not found'));
         }
         const tool = { id: req.params.id, ...definition, timestamp: new Date().toISOString() };
         await fs.writeJSON(toolPath, tool);
         res.json(tool);
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('TOOL_ERROR', error.message));
       }
     });
 
@@ -584,12 +674,12 @@ async function main() {
         const toolsDir = path.join(process.cwd(), '.tools');
         const toolPath = path.join(toolsDir, `${req.params.id}.json`);
         if (!fs.existsSync(toolPath)) {
-          return res.status(404).json({ error: 'Tool not found' });
+          return res.status(404).json(createErrorResponse('TOOL_NOT_FOUND', 'Tool not found'));
         }
         await fs.remove(toolPath);
         res.json({ success: true, id: req.params.id });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('TOOL_ERROR', error.message));
       }
     });
 
@@ -621,7 +711,7 @@ async function main() {
         }
         res.json(allRuns.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('TASK_ERROR', error.message));
       }
     });
 
@@ -668,7 +758,7 @@ async function main() {
           averageDuration: Math.round(avgDuration)
         });
       } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json(createErrorResponse('METRICS_ERROR', error.message));
       }
     });
 
@@ -744,6 +834,12 @@ async function main() {
             }
           });
           ws.send(JSON.stringify({ type: 'connected', taskName }));
+        });
+      } else if (req.url.startsWith('/api/files/subscribe')) {
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          fileSubscribers.add(ws);
+          ws.on('close', () => fileSubscribers.delete(ws));
+          ws.send(JSON.stringify({ type: 'connected', message: 'File subscription established' }));
         });
       } else {
         socket.destroy();
