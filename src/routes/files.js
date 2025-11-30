@@ -5,6 +5,7 @@ import { createErrorResponse, createValidationError } from '../utils/error-facto
 import { asyncHandler } from '../middleware/error-handler.js';
 import { broadcastToFileSubscribers } from '../utils/ws-broadcaster.js';
 import { CONFIG } from '../config/defaults.js';
+import { logFileOperation, logFileSuccess, logBatchFileOperation, createDetailedErrorResponse } from '../utils/error-logger.js';
 
 export function registerFileRoutes(app) {
   app.get('/api/files/current-path', (req, res) => {
@@ -31,88 +32,154 @@ export function registerFileRoutes(app) {
 
   app.get('/api/files/read', asyncHandler(async (req, res) => {
     const filePath = req.query.path;
-    const realPath = validateFilePath(filePath);
-    const stat = await fs.stat(realPath);
-    if (stat.isDirectory()) {
-      return res.status(400).json(createErrorResponse('INVALID_OPERATION', 'Cannot read directory'));
+    const startTime = Date.now();
+    try {
+      const realPath = validateFilePath(filePath);
+      const stat = await fs.stat(realPath);
+      if (stat.isDirectory()) {
+        return res.status(400).json(createErrorResponse('INVALID_OPERATION', 'Cannot read directory'));
+      }
+      if (stat.size > CONFIG.files.maxSizeBytes) {
+        const maxMb = Math.round(CONFIG.files.maxSizeBytes / (1024 * 1024));
+        logFileOperation('read', filePath, new Error('File too large'), { size: stat.size, limit: CONFIG.files.maxSizeBytes });
+        return res.status(400).json(createErrorResponse('FILE_TOO_LARGE', `File too large (max ${maxMb}MB)`));
+      }
+      const content = await fs.readFile(realPath, 'utf8');
+      const duration = Date.now() - startTime;
+      logFileSuccess('read', filePath, duration, { size: stat.size });
+      res.json({ path: realPath, size: stat.size, content, modified: stat.mtime });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logFileOperation('read', filePath, error, { duration });
+      const errorResponse = createDetailedErrorResponse('read', filePath, error, 500);
+      res.status(errorResponse.statusCode).json(errorResponse.error);
     }
-    if (stat.size > CONFIG.files.maxSizeBytes) {
-      const maxMb = Math.round(CONFIG.files.maxSizeBytes / (1024 * 1024));
-      return res.status(400).json(createErrorResponse('FILE_TOO_LARGE', `File too large (max ${maxMb}MB)`));
-    }
-    const content = await fs.readFile(realPath, 'utf8');
-    res.json({ path: realPath, size: stat.size, content, modified: stat.mtime });
   }));
 
   app.post('/api/files/write', asyncHandler(async (req, res) => {
     const { path: filePath, content } = req.body;
-    if (content === undefined) {
-      return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Content is required'));
+    const startTime = Date.now();
+    try {
+      if (content === undefined) {
+        return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Content is required'));
+      }
+      const realPath = validateFilePath(filePath);
+      await fs.ensureDir(path.dirname(realPath));
+      const isNew = !fs.existsSync(realPath);
+      await fs.writeFile(realPath, content, 'utf8');
+      const duration = Date.now() - startTime;
+      logFileSuccess('write', filePath, duration, { size: content.length, isNew });
+      broadcastToFileSubscribers({ type: isNew ? 'file-created' : 'file-modified', path: filePath, timestamp: new Date().toISOString() });
+      res.json({ path: realPath, size: content.length, success: true });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logFileOperation('write', filePath, error, { duration, contentLength: content?.length || 0 });
+      const errorResponse = createDetailedErrorResponse('write', filePath, error, 500);
+      res.status(errorResponse.statusCode).json(errorResponse.error);
     }
-    const realPath = validateFilePath(filePath);
-    await fs.ensureDir(path.dirname(realPath));
-    const isNew = !fs.existsSync(realPath);
-    await fs.writeFile(realPath, content, 'utf8');
-    broadcastToFileSubscribers({ type: isNew ? 'file-created' : 'file-modified', path: filePath, timestamp: new Date().toISOString() });
-    res.json({ path: realPath, size: content.length, success: true });
   }));
 
   app.post('/api/files/mkdir', asyncHandler(async (req, res) => {
     const { path: dirPath } = req.body;
-    const realPath = validateFilePath(dirPath);
-    await fs.ensureDir(realPath);
-    broadcastToFileSubscribers({ type: 'directory-created', path: dirPath, timestamp: new Date().toISOString() });
-    res.json({ path: realPath, success: true });
+    const startTime = Date.now();
+    try {
+      const realPath = validateFilePath(dirPath);
+      await fs.ensureDir(realPath);
+      const duration = Date.now() - startTime;
+      logFileSuccess('mkdir', dirPath, duration);
+      broadcastToFileSubscribers({ type: 'directory-created', path: dirPath, timestamp: new Date().toISOString() });
+      res.json({ path: realPath, success: true });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logFileOperation('mkdir', dirPath, error, { duration });
+      const errorResponse = createDetailedErrorResponse('mkdir', dirPath, error, 500);
+      res.status(errorResponse.statusCode).json(errorResponse.error);
+    }
   }));
 
   app.delete('/api/files', asyncHandler(async (req, res) => {
     const filePath = req.query.path || req.body?.path;
-    const realPath = validateFilePath(filePath);
-    await fs.remove(realPath);
-    broadcastToFileSubscribers({ type: 'file-deleted', path: filePath, timestamp: new Date().toISOString() });
-    res.json({ path: realPath, success: true });
+    const startTime = Date.now();
+    try {
+      const realPath = validateFilePath(filePath);
+      await fs.remove(realPath);
+      const duration = Date.now() - startTime;
+      logFileSuccess('delete', filePath, duration);
+      broadcastToFileSubscribers({ type: 'file-deleted', path: filePath, timestamp: new Date().toISOString() });
+      res.json({ path: realPath, success: true });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logFileOperation('delete', filePath, error, { duration });
+      const errorResponse = createDetailedErrorResponse('delete', filePath, error, 500);
+      res.status(errorResponse.statusCode).json(errorResponse.error);
+    }
   }));
 
   app.post('/api/files/rename', asyncHandler(async (req, res) => {
     const { path: filePath, newName } = req.body;
+    const startTime = Date.now();
     if (!newName) throw createValidationError('newName is required', 'newName');
 
     try {
       validateFileName(newName);
-    } catch (e) {
-      throw createValidationError(e.message, 'newName');
+      const realPath = validateFilePath(filePath);
+      const dir = path.dirname(realPath);
+      const newPath = path.join(dir, newName);
+      validateFilePath(newPath);
+      await fs.rename(realPath, newPath);
+      const duration = Date.now() - startTime;
+      const newRelativePath = filePath.substring(0, filePath.lastIndexOf('/') + 1) + newName;
+      logFileSuccess('rename', filePath, duration, { newName });
+      broadcastToFileSubscribers({ type: 'file-renamed', oldPath: filePath, newPath: newRelativePath, timestamp: new Date().toISOString() });
+      res.json({ oldPath: realPath, newPath: newPath, success: true });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logFileOperation('rename', filePath, error, { duration, newName });
+      const errorResponse = createDetailedErrorResponse('rename', filePath, error, 500);
+      res.status(errorResponse.statusCode).json(errorResponse.error);
     }
-
-    const realPath = validateFilePath(filePath);
-    const dir = path.dirname(realPath);
-    const newPath = path.join(dir, newName);
-    validateFilePath(newPath);
-    await fs.rename(realPath, newPath);
-    const newRelativePath = filePath.substring(0, filePath.lastIndexOf('/') + 1) + newName;
-    broadcastToFileSubscribers({ type: 'file-renamed', oldPath: filePath, newPath: newRelativePath, timestamp: new Date().toISOString() });
-    res.json({ oldPath: realPath, newPath: newPath, success: true });
   }));
 
   app.post('/api/files/copy', asyncHandler(async (req, res) => {
     const { path: filePath, newPath: destPath } = req.body;
+    const startTime = Date.now();
     if (!filePath) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'path is required'));
     if (!destPath) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'newPath is required'));
-    const realPath = validateFilePath(filePath);
-    const realDest = validateFilePath(destPath);
-    await fs.ensureDir(path.dirname(realDest));
-    await fs.copy(realPath, realDest);
-    broadcastToFileSubscribers({ type: 'file-copied', sourcePath: filePath, destPath: destPath, timestamp: new Date().toISOString() });
-    res.json({ sourcePath: realPath, destPath: realDest, success: true });
+    try {
+      const realPath = validateFilePath(filePath);
+      const realDest = validateFilePath(destPath);
+      await fs.ensureDir(path.dirname(realDest));
+      await fs.copy(realPath, realDest);
+      const duration = Date.now() - startTime;
+      logFileSuccess('copy', filePath, duration, { destination: destPath });
+      broadcastToFileSubscribers({ type: 'file-copied', sourcePath: filePath, destPath: destPath, timestamp: new Date().toISOString() });
+      res.json({ sourcePath: realPath, destPath: realDest, success: true });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logFileOperation('copy', filePath, error, { duration, destination: destPath });
+      const errorResponse = createDetailedErrorResponse('copy', filePath, error, 500);
+      res.status(errorResponse.statusCode).json(errorResponse.error);
+    }
   }));
 
   app.post('/api/files/save', asyncHandler(async (req, res) => {
     const { path: filePath, content } = req.body;
-    if (!content) {
-      return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Content is required'));
+    const startTime = Date.now();
+    try {
+      if (!content) {
+        return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Content is required'));
+      }
+      const realPath = validateFilePath(filePath);
+      await fs.ensureDir(path.dirname(realPath));
+      await fs.writeFile(realPath, content, 'utf8');
+      const duration = Date.now() - startTime;
+      logFileSuccess('save', filePath, duration, { size: content.length });
+      res.json({ path: realPath, success: true });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logFileOperation('save', filePath, error, { duration, contentLength: content?.length || 0 });
+      const errorResponse = createDetailedErrorResponse('save', filePath, error, 500);
+      res.status(errorResponse.statusCode).json(errorResponse.error);
     }
-    const realPath = validateFilePath(filePath);
-    await fs.ensureDir(path.dirname(realPath));
-    await fs.writeFile(realPath, content, 'utf8');
-    res.json({ path: realPath, success: true });
   }));
 }
