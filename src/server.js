@@ -255,6 +255,87 @@ function createRequestLogger() {
   };
 }
 
+const wsConnectionMap = new Map();
+const WS_MAX_CONNECTIONS_PER_IP = 10;
+const WS_CONNECTION_CLEANUP_INTERVAL = 60000;
+
+function createWebSocketRateLimiter() {
+  setInterval(() => {
+    const now = Date.now();
+    wsConnectionMap.forEach((connections, ip) => {
+      const validConnections = connections.filter(c => c.ws.readyState === 1);
+      if (validConnections.length === 0) {
+        wsConnectionMap.delete(ip);
+      } else {
+        wsConnectionMap.set(ip, validConnections);
+      }
+    });
+  }, WS_CONNECTION_CLEANUP_INTERVAL);
+
+  return {
+    canConnect(ip) {
+      if (!wsConnectionMap.has(ip)) {
+        wsConnectionMap.set(ip, []);
+        return true;
+      }
+      const connections = wsConnectionMap.get(ip);
+      const validConnections = connections.filter(c => c.ws.readyState === 1);
+      wsConnectionMap.set(ip, validConnections);
+      return validConnections.length < WS_MAX_CONNECTIONS_PER_IP;
+    },
+    addConnection(ip, ws) {
+      if (!wsConnectionMap.has(ip)) {
+        wsConnectionMap.set(ip, []);
+      }
+      wsConnectionMap.get(ip).push({ ws, timestamp: Date.now() });
+      ws.on('close', () => {
+        const connections = wsConnectionMap.get(ip);
+        if (connections) {
+          const idx = connections.findIndex(c => c.ws === ws);
+          if (idx !== -1) connections.splice(idx, 1);
+          if (connections.length === 0) wsConnectionMap.delete(ip);
+        }
+      });
+    }
+  };
+}
+
+const wsRateLimiter = createWebSocketRateLimiter();
+
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+function createValidationError(message, field = null) {
+  const err = new Error(message);
+  err.code = 'VALIDATION_ERROR';
+  err.status = 400;
+  err.field = field;
+  return err;
+}
+
+function createNotFoundError(resource) {
+  const err = new Error(`${resource} not found`);
+  err.code = 'NOT_FOUND';
+  err.status = 404;
+  return err;
+}
+
+function createForbiddenError(message = 'Access denied') {
+  const err = new Error(message);
+  err.code = 'FORBIDDEN';
+  err.status = 403;
+  return err;
+}
+
+function createServerError(message, originalError = null) {
+  const err = new Error(message);
+  err.code = 'INTERNAL_ERROR';
+  err.status = 500;
+  err.originalError = originalError;
+  return err;
+}
+
 async function main() {
   try {
     console.log('\n🚀 Starting Sequential Desktop Server...\n');
@@ -553,78 +634,74 @@ async function main() {
       }
     });
 
-    app.get('/api/tasks', async (req, res) => {
-      try {
-        const tasksDir = path.join(process.cwd(), 'tasks');
-        if (!fs.existsSync(tasksDir)) {
-          return res.json([]);
-        }
-        const tasks = fs.readdirSync(tasksDir)
-          .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory())
-          .map(name => {
-            const configPath = path.join(tasksDir, name, 'config.json');
-            let config = { name, id: name };
-            if (fs.existsSync(configPath)) {
-              try {
-                config = { ...config, ...JSON.parse(fs.readFileSync(configPath, 'utf8')) };
-              } catch (e) {}
+    app.get('/api/tasks', asyncHandler(async (req, res) => {
+      const tasksDir = path.join(process.cwd(), 'tasks');
+      if (!fs.existsSync(tasksDir)) {
+        return res.json([]);
+      }
+      const tasks = fs.readdirSync(tasksDir)
+        .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory())
+        .map(name => {
+          const configPath = path.join(tasksDir, name, 'config.json');
+          let config = { name, id: name };
+          if (fs.existsSync(configPath)) {
+            try {
+              config = { ...config, ...JSON.parse(fs.readFileSync(configPath, 'utf8')) };
+            } catch (parseErr) {
+              if (process.env.DEBUG) {
+                console.warn(`Failed to parse ${configPath}: ${parseErr.message}`);
+              }
             }
-            return config;
-          });
-        res.json(tasks);
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
-    });
+          }
+          return config;
+        });
+      res.json(tasks);
+    }));
 
-    app.post('/api/tasks/:taskName/run', async (req, res) => {
+    app.post('/api/tasks/:taskName/run', asyncHandler(async (req, res) => {
+      const { input } = req.body;
+      const { taskName } = req.params;
+
+      if (!taskName || typeof taskName !== 'string') {
+        throw createValidationError('Task name must be a non-empty string', 'taskName');
+      }
+
+      const taskDir = path.join(process.cwd(), 'tasks', taskName);
+      const realTaskDir = path.resolve(taskDir);
+      if (!realTaskDir.startsWith(process.cwd())) {
+        throw createForbiddenError(`Access to task '${taskName}' denied`);
+      }
+
+      const codePath = path.join(taskDir, 'code.js');
+      if (!fs.existsSync(codePath)) {
+        throw createNotFoundError(`Task '${taskName}'`);
+      }
+
+      const runId = Date.now().toString();
+      const startTime = Date.now();
+      activeTasks.set(runId, { taskName, startTime });
+      broadcastToRunSubscribers({ type: 'run-started', runId, taskName, timestamp: new Date().toISOString() });
+
+      let output = null, status = 'success', error = null;
       try {
-        const { input } = req.body;
-        const taskName = req.params.taskName;
-
-        if (!taskName || typeof taskName !== 'string') {
-          return res.status(400).json(createErrorResponse('INVALID_TASK_NAME', 'Task name must be a non-empty string'));
-        }
-
-        const taskDir = path.join(process.cwd(), 'tasks', taskName);
-        const realTaskDir = path.resolve(taskDir);
-        if (!realTaskDir.startsWith(process.cwd())) {
-          return res.status(403).json(createErrorResponse('ACCESS_DENIED', 'Access to task directory denied'));
-        }
-
-        const codePath = path.join(taskDir, 'code.js');
-        if (!fs.existsSync(codePath)) {
-          return res.status(404).json(createErrorResponse('TASK_NOT_FOUND', `Task '${taskName}' not found`));
-        }
-
-        const runId = Date.now().toString();
-        const startTime = Date.now();
-        activeTasks.set(runId, { taskName, startTime });
-        broadcastToRunSubscribers({ type: 'run-started', runId, taskName, timestamp: new Date().toISOString() });
-
-        let output = null, status = 'success', error = null;
-        try {
-          const code = fs.readFileSync(codePath, 'utf8');
-          output = await executeTaskWithTimeout(taskName, code, input, 30000);
-        } catch (execError) {
-          status = 'error';
-          error = execError.message;
-          output = { error: error, stack: execError.stack };
-        }
-
-        const duration = Date.now() - startTime;
-        const result = { runId, status, input, output, error, duration, timestamp: new Date().toISOString() };
-        const runsDir = path.join(taskDir, 'runs');
-        await fs.ensureDir(runsDir);
-        await fs.writeJSON(path.join(runsDir, `${runId}.json`), result);
-        activeTasks.delete(runId);
-        broadcastToRunSubscribers({ type: 'run-completed', runId, taskName, status, duration, timestamp: result.timestamp });
-        broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });
-        res.json(result);
-      } catch (error) {
-        res.status(500).json(createErrorResponse('INTERNAL_ERROR', error.message));
+        const code = fs.readFileSync(codePath, 'utf8');
+        output = await executeTaskWithTimeout(taskName, code, input, 30000);
+      } catch (execError) {
+        status = 'error';
+        error = execError.message;
+        output = { error: error, stack: execError.stack };
       }
-    });
+
+      const duration = Date.now() - startTime;
+      const result = { runId, status, input, output, error, duration, timestamp: new Date().toISOString() };
+      const runsDir = path.join(taskDir, 'runs');
+      await fs.ensureDir(runsDir);
+      await fs.writeJSON(path.join(runsDir, `${runId}.json`), result);
+      activeTasks.delete(runId);
+      broadcastToRunSubscribers({ type: 'run-completed', runId, taskName, status, duration, timestamp: result.timestamp });
+      broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });
+      res.json(result);
+    }));
 
     app.post('/api/tasks/:runId/cancel', async (req, res) => {
       try {
@@ -957,12 +1034,38 @@ async function main() {
 
     app.use(express.static(path.join(__dirname, '../../zellous')));
 
+    app.use((err, req, res, next) => {
+      const status = err.status || 500;
+      const code = err.code || 'INTERNAL_ERROR';
+      const message = err.message || 'Internal server error';
+      const details = {};
+
+      if (err.field) {
+        details.field = err.field;
+      }
+
+      if (process.env.DEBUG && err.originalError) {
+        details.originalError = err.originalError.message;
+      }
+
+      res.status(status).json(createErrorResponse(code, message, details));
+    });
+
     const httpServer = http.createServer(app);
     const wss = new WebSocketServer({ noServer: true });
 
     httpServer.on('upgrade', (req, socket, head) => {
+      const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'] || '127.0.0.1';
+
+      if (!wsRateLimiter.canConnect(clientIp)) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
       if (req.url.startsWith('/api/runs/subscribe')) {
         wss.handleUpgrade(req, socket, head, (ws) => {
+          wsRateLimiter.addConnection(clientIp, ws);
           const subscriptionId = `run-${Date.now()}`;
           runSubscribers.set(subscriptionId, ws);
           ws.on('close', () => runSubscribers.delete(subscriptionId));
@@ -971,6 +1074,7 @@ async function main() {
       } else if (req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)) {
         const taskName = req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)[1];
         wss.handleUpgrade(req, socket, head, (ws) => {
+          wsRateLimiter.addConnection(clientIp, ws);
           if (!taskSubscribers.has(taskName)) {
             taskSubscribers.set(taskName, new Set());
           }
@@ -985,6 +1089,7 @@ async function main() {
         });
       } else if (req.url.startsWith('/api/files/subscribe')) {
         wss.handleUpgrade(req, socket, head, (ws) => {
+          wsRateLimiter.addConnection(clientIp, ws);
           fileSubscribers.add(ws);
           ws.on('close', () => fileSubscribers.delete(ws));
           ws.send(JSON.stringify({ type: 'connected', message: 'File subscription established' }));
