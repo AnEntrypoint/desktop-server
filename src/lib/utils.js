@@ -80,3 +80,38 @@ export function validateFileName(fileName) {
   }
   return fileName;
 }
+
+export function validateInputSchema(input, schema) {
+  if (!schema || !Array.isArray(schema)) {
+    return null;
+  }
+
+  const errors = [];
+
+  for (const field of schema) {
+    const { name, type, required = false } = field;
+    const value = input[name];
+
+    if (value === undefined || value === null) {
+      if (required) {
+        errors.push(`Field '${name}' is required`);
+      }
+      continue;
+    }
+
+    const actualType = typeof value;
+    if (type === 'array' && !Array.isArray(value)) {
+      errors.push(`Field '${name}' must be an array, got ${actualType}`);
+    } else if (type === 'object' && (actualType !== 'object' || Array.isArray(value))) {
+      errors.push(`Field '${name}' must be an object, got ${actualType}`);
+    } else if (type === 'number' && actualType !== 'number') {
+      errors.push(`Field '${name}' must be a number, got ${actualType}`);
+    } else if (type === 'string' && actualType !== 'string') {
+      errors.push(`Field '${name}' must be a string, got ${actualType}`);
+    } else if (type === 'boolean' && actualType !== 'boolean') {
+      errors.push(`Field '${name}' must be a boolean, got ${actualType}`);
+    }
+  }
+
+  return errors.length > 0 ? errors : null;
+}
