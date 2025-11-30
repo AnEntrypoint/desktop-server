@@ -7,7 +7,7 @@ import { dirname } from 'path';
 import { AppRegistry } from './app-registry.js';
 import { createRequire } from 'module';
 import { watch } from 'fs';
-import WebSocket from 'ws';
+import { WebSocketServer } from 'ws';
 import http from 'http';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -720,7 +720,7 @@ async function main() {
     app.use(express.static(path.join(__dirname, '../../zellous')));
 
     const httpServer = http.createServer(app);
-    const wss = new WebSocket.Server({ noServer: true });
+    const wss = new WebSocketServer({ noServer: true });
 
     httpServer.on('upgrade', (req, socket, head) => {
       if (req.url.startsWith('/api/runs/subscribe')) {
