@@ -15,11 +15,20 @@ export async function executeTaskWithTimeout(taskName, code, input, timeoutMs = 
     try {
       worker = new Worker(workerPath);
 
+      const cleanup = () => {
+        clearTimeout(timeoutHandle);
+        worker.removeListener('message', handleMessage);
+        worker.removeListener('error', handleError);
+        worker.removeListener('exit', handleExit);
+        try {
+          worker.terminate();
+        } catch (e) {}
+      };
+
       const handleMessage = (message) => {
         if (completed) return;
         completed = true;
-        clearTimeout(timeoutHandle);
-        worker.terminate();
+        cleanup();
 
         if (message.success) {
           resolve(message.result);
@@ -33,27 +42,27 @@ export async function executeTaskWithTimeout(taskName, code, input, timeoutMs = 
       const handleError = (error) => {
         if (completed) return;
         completed = true;
-        clearTimeout(timeoutHandle);
-        if (worker) worker.terminate();
+        cleanup();
         reject(new Error(`Worker error: ${error.message}`));
+      };
+
+      const handleExit = (code) => {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        reject(new Error(`Worker exited with code ${code}`));
       };
 
       timeoutHandle = setTimeout(() => {
         if (completed) return;
         completed = true;
-        if (worker) worker.terminate();
+        cleanup();
         reject(new Error(`Task execution timeout after ${timeoutMs}ms`));
       }, timeoutMs);
 
       worker.on('message', handleMessage);
       worker.on('error', handleError);
-      worker.on('exit', (code) => {
-        if (!completed) {
-          completed = true;
-          clearTimeout(timeoutHandle);
-          reject(new Error(`Worker exited with code ${code}`));
-        }
-      });
+      worker.on('exit', handleExit);
 
       worker.postMessage({ taskCode: code, input: input || {}, taskName });
     } catch (error) {

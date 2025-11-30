@@ -5,6 +5,18 @@ const rateLimitMap = new Map();
 const wsConnectionMap = new Map();
 
 export function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, timestamps] of rateLimitMap.entries()) {
+      const valid = timestamps.filter(t => now - t < windowMs);
+      if (valid.length === 0) {
+        rateLimitMap.delete(ip);
+      } else {
+        rateLimitMap.set(ip, valid);
+      }
+    }
+  }, Math.max(windowMs / 2, 30000));
+
   return (req, res, next) => {
     const ip = req.ip || req.connection.remoteAddress || '127.0.0.1';
     const now = Date.now();

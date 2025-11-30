@@ -1,15 +1,30 @@
 import path from 'path';
+import fs from 'fs';
 
 export function validateFilePath(filePath) {
   if (!filePath || typeof filePath !== 'string') {
     throw new Error('Invalid file path');
   }
-  const realPath = path.resolve(filePath);
+
+  const normalizedPath = path.resolve(filePath);
   const cwd = path.resolve(process.cwd());
+
+  let realPath;
+  try {
+    realPath = fs.realpathSync(normalizedPath);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      realPath = normalizedPath;
+    } else {
+      throw new Error('Access denied: cannot access file system');
+    }
+  }
+
   const relative = path.relative(cwd, realPath);
   if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new Error('Access denied: path traversal detected');
   }
+
   return realPath;
 }
 
