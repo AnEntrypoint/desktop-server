@@ -130,6 +130,94 @@ async function executeTaskWithTimeout(taskName, code, input, timeoutMs = 30000) 
   });
 }
 
+function validateInput(data, schema) {
+  if (!schema) return true;
+  if (schema.type === 'object') {
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      return { valid: false, error: 'Expected object' };
+    }
+    if (schema.required) {
+      for (const key of schema.required) {
+        if (!(key in data)) {
+          return { valid: false, error: `Missing required field: ${key}` };
+        }
+      }
+    }
+    if (schema.properties) {
+      for (const key in schema.properties) {
+        if (key in data) {
+          const result = validateInput(data[key], schema.properties[key]);
+          if (!result.valid) return result;
+        }
+      }
+    }
+    return { valid: true };
+  } else if (schema.type === 'string') {
+    if (typeof data !== 'string') {
+      return { valid: false, error: `Expected string, got ${typeof data}` };
+    }
+    if (schema.minLength && data.length < schema.minLength) {
+      return { valid: false, error: `String too short (min ${schema.minLength})` };
+    }
+    if (schema.maxLength && data.length > schema.maxLength) {
+      return { valid: false, error: `String too long (max ${schema.maxLength})` };
+    }
+    return { valid: true };
+  } else if (schema.type === 'number' || schema.type === 'integer') {
+    if (typeof data !== 'number' || (schema.type === 'integer' && !Number.isInteger(data))) {
+      return { valid: false, error: `Expected ${schema.type}` };
+    }
+    if (schema.minimum !== undefined && data < schema.minimum) {
+      return { valid: false, error: `Number below minimum (${schema.minimum})` };
+    }
+    if (schema.maximum !== undefined && data > schema.maximum) {
+      return { valid: false, error: `Number above maximum (${schema.maximum})` };
+    }
+    return { valid: true };
+  } else if (schema.type === 'boolean') {
+    if (typeof data !== 'boolean') {
+      return { valid: false, error: 'Expected boolean' };
+    }
+    return { valid: true };
+  } else if (schema.type === 'array') {
+    if (!Array.isArray(data)) {
+      return { valid: false, error: 'Expected array' };
+    }
+    if (schema.items) {
+      for (let i = 0; i < data.length; i++) {
+        const result = validateInput(data[i], schema.items);
+        if (!result.valid) return result;
+      }
+    }
+    return { valid: true };
+  }
+  return { valid: true };
+}
+
+const rateLimitMap = new Map();
+
+function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
+  return (req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress || '127.0.0.1';
+    const now = Date.now();
+
+    if (!rateLimitMap.has(ip)) {
+      rateLimitMap.set(ip, []);
+    }
+
+    const timestamps = rateLimitMap.get(ip);
+    const recentRequests = timestamps.filter(t => now - t < windowMs);
+
+    if (recentRequests.length >= maxRequests) {
+      return res.status(429).json(createErrorResponse('RATE_LIMIT_EXCEEDED', `Too many requests. Limit: ${maxRequests} per ${windowMs}ms`, { retryAfter: windowMs / 1000 }));
+    }
+
+    recentRequests.push(now);
+    rateLimitMap.set(ip, recentRequests);
+    next();
+  };
+}
+
 async function main() {
   try {
     console.log('\n🚀 Starting Sequential Desktop Server...\n');
@@ -156,6 +244,7 @@ async function main() {
 
     const app = express();
     app.use(express.json());
+    app.use('/api/', createRateLimitMiddleware(100, 60000));
 
     app.get('/api/apps', (req, res) => {
       res.json(appRegistry.getManifests());
@@ -485,6 +574,21 @@ async function main() {
         res.json(result);
       } catch (error) {
         res.status(500).json(createErrorResponse('INTERNAL_ERROR', error.message));
+      }
+    });
+
+    app.post('/api/tasks/:runId/cancel', async (req, res) => {
+      try {
+        const { runId } = req.params;
+        if (!activeTasks.has(runId)) {
+          return res.status(404).json(createErrorResponse('TASK_NOT_FOUND', 'Task not running or already completed'));
+        }
+        const task = activeTasks.get(runId);
+        activeTasks.delete(runId);
+        broadcastToRunSubscribers({ type: 'run-cancelled', runId, taskName: task.taskName, timestamp: new Date().toISOString() });
+        res.json({ success: true, runId, cancelled: true, message: `Task ${runId} cancelled` });
+      } catch (error) {
+        res.status(500).json(createErrorResponse('TASK_ERROR', error.message));
       }
     });
 
