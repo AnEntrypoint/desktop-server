@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { AppRegistry } from './app-registry.js';
 import { createRequire } from 'module';
+import { watch } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -163,6 +164,49 @@ async function main() {
       } catch (error) {
         console.error('Tag error:', error);
         res.status(500).json({ error: error.message });
+      }
+    });
+
+    const hotReloadClients = [];
+
+    app.get('/dev/reload', (req, res) => {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      hotReloadClients.push(res);
+
+      req.on('close', () => {
+        const index = hotReloadClients.indexOf(res);
+        if (index !== -1) {
+          hotReloadClients.splice(index, 1);
+        }
+      });
+    });
+
+    function notifyReload(file) {
+      console.log(`\n🔥 Hot reload: ${path.basename(file)}`);
+      hotReloadClients.forEach(client => {
+        client.write(`data: ${JSON.stringify({ type: 'reload', file })}\n\n`);
+      });
+    }
+
+    const watchPaths = [
+      path.join(__dirname, '../../desktop-shell/dist'),
+      ...appRegistry.getManifests().map(app =>
+        path.join(__dirname, `../../${app.id}/dist`)
+      )
+    ];
+
+    watchPaths.forEach(watchPath => {
+      if (fs.existsSync(watchPath)) {
+        watch(watchPath, { recursive: true }, (eventType, filename) => {
+          if (filename && (filename.endsWith('.html') || filename.endsWith('.js') || filename.endsWith('.css'))) {
+            notifyReload(path.join(watchPath, filename));
+          }
+        });
+        console.log(`  👁️  Watching: ${path.relative(path.join(__dirname, '../..'), watchPath)}`);
       }
     });
 
