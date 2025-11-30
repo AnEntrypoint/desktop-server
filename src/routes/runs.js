@@ -66,15 +66,30 @@ export function registerRunsRoutes(app, getActiveTasks) {
     const total = allRuns.length;
     const successful = allRuns.filter(r => r.status === 'success').length;
     const failed = allRuns.filter(r => r.status === 'error').length;
+    const cancelled = allRuns.filter(r => r.status === 'cancelled').length;
+    const completedRuns = successful + failed + cancelled;
     const durations = allRuns.map(r => r.duration || 0).filter(d => d > 0);
+    const sortedDurations = durations.sort((a, b) => a - b);
     const avgDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+    const medianDuration = sortedDurations.length > 0 ? sortedDurations[Math.floor(sortedDurations.length / 2)] : 0;
+    const minDuration = sortedDurations.length > 0 ? sortedDurations[0] : 0;
+    const maxDuration = sortedDurations.length > 0 ? sortedDurations[sortedDurations.length - 1] : 0;
     const metrics = {
       totalRuns: total,
       activeRuns: activeTasks.size,
+      completedRuns,
       successfulRuns: successful,
       failedRuns: failed,
-      successRate: total > 0 ? (successful / total * 100).toFixed(2) : 0,
-      averageDuration: Math.round(avgDuration)
+      cancelledRuns: cancelled,
+      successRate: completedRuns > 0 ? (successful / completedRuns * 100).toFixed(2) : 0,
+      failureRate: completedRuns > 0 ? (failed / completedRuns * 100).toFixed(2) : 0,
+      cancellationRate: completedRuns > 0 ? (cancelled / completedRuns * 100).toFixed(2) : 0,
+      duration: {
+        average: Math.round(avgDuration),
+        median: Math.round(medianDuration),
+        min: Math.round(minDuration),
+        max: Math.round(maxDuration)
+      }
     };
     setCache(cacheKey, metrics);
     res.json(metrics);

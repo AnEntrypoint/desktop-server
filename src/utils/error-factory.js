@@ -38,3 +38,25 @@ export function createServerError(message, originalError = null) {
   err.originalError = originalError;
   return err;
 }
+
+export function createConflictError(message = 'Resource conflict') {
+  const err = new Error(message);
+  err.code = 'CONFLICT';
+  err.status = 409;
+  return err;
+}
+
+export function createUnprocessableError(message, details = {}) {
+  const err = new Error(message);
+  err.code = 'UNPROCESSABLE_ENTITY';
+  err.status = 422;
+  err.details = details;
+  return err;
+}
+
+export function createBadRequestError(message) {
+  const err = new Error(message);
+  err.code = 'BAD_REQUEST';
+  err.status = 400;
+  return err;
+}
