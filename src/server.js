@@ -195,6 +195,8 @@ function validateInput(data, schema) {
 }
 
 const rateLimitMap = new Map();
+const requestLog = [];
+const maxLogSize = 1000;
 
 function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
   return (req, res, next) => {
@@ -214,6 +216,41 @@ function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
 
     recentRequests.push(now);
     rateLimitMap.set(ip, recentRequests);
+    next();
+  };
+}
+
+function createRequestLogger() {
+  return (req, res, next) => {
+    const requestId = Math.random().toString(36).substring(7);
+    const startTime = Date.now();
+
+    req.requestId = requestId;
+    const originalJson = res.json;
+    res.json = function(data) {
+      const duration = Date.now() - startTime;
+      const logEntry = {
+        requestId,
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        duration: `${duration}ms`,
+        ip: req.ip || 'unknown'
+      };
+
+      if (requestLog.length >= maxLogSize) {
+        requestLog.shift();
+      }
+      requestLog.push(logEntry);
+
+      if (process.env.DEBUG) {
+        console.log(`[${requestId}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+      }
+
+      return originalJson.call(this, data);
+    };
+
     next();
   };
 }
@@ -244,7 +281,12 @@ async function main() {
 
     const app = express();
     app.use(express.json());
+    app.use('/api/', createRequestLogger());
     app.use('/api/', createRateLimitMiddleware(100, 60000));
+
+    app.get('/api/logs', (req, res) => {
+      res.json({ logs: requestLog, limit: maxLogSize });
+    });
 
     app.get('/api/apps', (req, res) => {
       res.json(appRegistry.getManifests());
