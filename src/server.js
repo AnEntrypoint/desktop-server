@@ -60,7 +60,9 @@ async function main() {
         'app-flow-editor',
         'app-task-editor',
         'app-code-editor',
-        'app-tool-editor'
+        'app-tool-editor',
+        'app-task-debugger',
+        'app-flow-debugger'
       ]
     });
 
