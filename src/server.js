@@ -100,6 +100,12 @@ async function main() {
       next();
     });
 
+    app.use((req, res, next) => {
+      req.requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      res.header('X-Request-ID', req.requestId);
+      next();
+    });
+
     app.use('/api/', createRequestLogger());
     app.use('/api/', createRateLimitMiddleware(100, 60000));
 
@@ -180,12 +186,9 @@ async function main() {
       console.log('\nPress Ctrl+C to shutdown\n');
     });
 
-    process.on('SIGINT', () => {
-      console.log('\n\nShutting down...');
-      process.exit(0);
-    });
-
     const hotReloadClients = [];
+    const fileWatchers = [];
+
     app.get('/dev/reload', (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -200,13 +203,25 @@ async function main() {
           hotReloadClients.splice(index, 1);
         }
       });
+
+      req.on('error', () => {
+        const index = hotReloadClients.indexOf(res);
+        if (index !== -1) {
+          hotReloadClients.splice(index, 1);
+        }
+      });
     });
 
     function notifyReload(file) {
       console.log(`\n🔥 Hot reload: ${path.basename(file)}`);
-      hotReloadClients.forEach(client => {
-        client.write(`data: ${JSON.stringify({ type: 'reload', file })}\n\n`);
-      });
+      for (let i = hotReloadClients.length - 1; i >= 0; i--) {
+        const client = hotReloadClients[i];
+        try {
+          client.write(`data: ${JSON.stringify({ type: 'reload', file })}\n\n`);
+        } catch (err) {
+          hotReloadClients.splice(i, 1);
+        }
+      }
     }
 
     const watchPaths = [
@@ -218,13 +233,20 @@ async function main() {
 
     watchPaths.forEach(watchPath => {
       if (fs.existsSync(watchPath)) {
-        watch(watchPath, { recursive: true }, (eventType, filename) => {
+        const watcher = watch(watchPath, { recursive: true }, (eventType, filename) => {
           if (filename && (filename.endsWith('.html') || filename.endsWith('.js') || filename.endsWith('.css'))) {
             notifyReload(path.join(watchPath, filename));
           }
         });
+        fileWatchers.push(watcher);
         console.log(`  👁️  Watching: ${path.relative(path.join(__dirname, '../..'), watchPath)}`);
       }
+    });
+
+    process.on('SIGINT', () => {
+      console.log('\n\nShutting down...');
+      fileWatchers.forEach(watcher => watcher.close());
+      process.exit(0);
     });
 
     return new Promise(() => {});
