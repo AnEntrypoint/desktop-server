@@ -1,9 +1,8 @@
 import { createErrorResponse } from '../utils/error-factory.js';
+import { CONFIG } from '../config/defaults.js';
 
 const rateLimitMap = new Map();
 const wsConnectionMap = new Map();
-const WS_MAX_CONNECTIONS_PER_IP = 10;
-const WS_CONNECTION_CLEANUP_INTERVAL = 60000;
 
 export function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
   return (req, res, next) => {
@@ -38,7 +37,7 @@ export function createWebSocketRateLimiter() {
         wsConnectionMap.set(ip, validConnections);
       }
     });
-  }, WS_CONNECTION_CLEANUP_INTERVAL);
+  }, CONFIG.rateLimit.websocket.cleanupIntervalMs);
 }
 
 export function checkWebSocketRateLimit(ip) {
@@ -47,7 +46,7 @@ export function checkWebSocketRateLimit(ip) {
   }
 
   const connections = wsConnectionMap.get(ip);
-  if (connections.length >= WS_MAX_CONNECTIONS_PER_IP) {
+  if (connections.length >= CONFIG.rateLimit.websocket.maxConnectionsPerIp) {
     const oldestConnection = connections[0];
     oldestConnection.ws.close(1008, 'Per-IP connection limit exceeded');
     connections.shift();

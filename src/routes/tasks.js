@@ -6,6 +6,7 @@ import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers } from '../utils/ws-broadcaster.js';
 import { invalidateCache } from '../utils/cache.js';
 import { executeTaskWithTimeout } from '../utils/task-executor.js';
+import { CONFIG } from '../config/defaults.js';
 
 const activeTasks = new Map();
 
@@ -66,7 +67,7 @@ export function registerTaskRoutes(app) {
     let output = null, status = 'success', error = null;
     try {
       const code = fs.readFileSync(codePath, 'utf8');
-      output = await executeTaskWithTimeout(taskName, code, input, 30000);
+      output = await executeTaskWithTimeout(taskName, code, input, CONFIG.tasks.executionTimeoutMs);
     } catch (execError) {
       status = 'error';
       error = execError.message;

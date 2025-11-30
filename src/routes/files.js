@@ -4,6 +4,7 @@ import { validateFilePath, validateFileName } from '../lib/utils.js';
 import { createErrorResponse, createValidationError } from '../utils/error-factory.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { broadcastToFileSubscribers } from '../utils/ws-broadcaster.js';
+import { CONFIG } from '../config/defaults.js';
 
 export function registerFileRoutes(app) {
   app.get('/api/files/current-path', (req, res) => {
@@ -35,8 +36,9 @@ export function registerFileRoutes(app) {
     if (stat.isDirectory()) {
       return res.status(400).json(createErrorResponse('INVALID_OPERATION', 'Cannot read directory'));
     }
-    if (stat.size > 10 * 1024 * 1024) {
-      return res.status(400).json(createErrorResponse('FILE_TOO_LARGE', 'File too large (max 10MB)'));
+    if (stat.size > CONFIG.files.maxSizeBytes) {
+      const maxMb = Math.round(CONFIG.files.maxSizeBytes / (1024 * 1024));
+      return res.status(400).json(createErrorResponse('FILE_TOO_LARGE', `File too large (max ${maxMb}MB)`));
     }
     const content = await fs.readFile(realPath, 'utf8');
     res.json({ path: realPath, size: stat.size, content, modified: stat.mtime });
