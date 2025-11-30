@@ -22,6 +22,7 @@ import { registerToolRoutes } from './routes/tools.js';
 import { registerRunsRoutes } from './routes/runs.js';
 import { registerAppRoutes } from './routes/apps.js';
 import { registerDebugRoutes } from './routes/debug.js';
+import { registerStorageObserverRoutes } from './routes/storage-observer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,6 +99,7 @@ async function main() {
     registerFlowRoutes(app);
     registerToolRoutes(app);
     registerRunsRoutes(app, getActiveTasks);
+    registerStorageObserverRoutes(app);
 
     app.use(express.static(path.join(__dirname, '../../desktop-shell/dist')));
     app.use(express.static(path.join(__dirname, '../../zellous')));
