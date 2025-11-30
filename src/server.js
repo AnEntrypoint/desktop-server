@@ -220,7 +220,7 @@ function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
   };
 }
 
-function createRequestLogger() {
+function createRequestLogger(slowThresholdMs = 1000) {
   return (req, res, next) => {
     const requestId = Math.random().toString(36).substring(7);
     const startTime = Date.now();
@@ -229,14 +229,21 @@ function createRequestLogger() {
     const originalJson = res.json;
     res.json = function(data) {
       const duration = Date.now() - startTime;
+      const isSlow = duration > slowThresholdMs;
+      const bodySize = JSON.stringify(data).length;
+
       const logEntry = {
         requestId,
         timestamp: new Date().toISOString(),
         method: req.method,
         path: req.path,
+        query: Object.keys(req.query).length > 0 ? req.query : undefined,
         status: res.statusCode,
         duration: `${duration}ms`,
-        ip: req.ip || 'unknown'
+        slow: isSlow,
+        bodySize: `${bodySize}B`,
+        ip: req.ip || 'unknown',
+        userAgent: req.get('user-agent')?.substring(0, 100)
       };
 
       if (requestLog.length >= maxLogSize) {
@@ -244,8 +251,11 @@ function createRequestLogger() {
       }
       requestLog.push(logEntry);
 
-      if (process.env.DEBUG) {
-        console.log(`[${requestId}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+      const level = isSlow ? '⚠️ ' : res.statusCode >= 400 ? '❌' : '✓';
+      if (process.env.DEBUG || isSlow || res.statusCode >= 400) {
+        console.log(`${level} [${requestId}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+        if (isSlow) console.log(`   Slow request detected (threshold: ${slowThresholdMs}ms)`);
+        if (res.statusCode >= 400) console.log(`   Error response: ${JSON.stringify(data).substring(0, 200)}`);
       }
 
       return originalJson.call(this, data);
@@ -301,6 +311,28 @@ function createWebSocketRateLimiter() {
 }
 
 const wsRateLimiter = createWebSocketRateLimiter();
+
+const operationLog = [];
+const maxOperationLogSize = 500;
+
+function logOperation(operation, details = {}) {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    operation,
+    ...details
+  };
+
+  if (operationLog.length >= maxOperationLogSize) {
+    operationLog.shift();
+  }
+  operationLog.push(entry);
+
+  if (process.env.DEBUG) {
+    console.log(`[${operation}] ${JSON.stringify(details).substring(0, 150)}`);
+  }
+
+  return entry;
+}
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -366,7 +398,29 @@ async function main() {
     app.use('/api/', createRateLimitMiddleware(100, 60000));
 
     app.get('/api/logs', (req, res) => {
-      res.json({ logs: requestLog, limit: maxLogSize });
+      const filter = req.query.filter;
+      const limit = parseInt(req.query.limit) || 50;
+      let logs = requestLog.slice(-limit);
+
+      if (filter === 'slow') {
+        logs = logs.filter(l => l.slow);
+      } else if (filter === 'errors') {
+        logs = logs.filter(l => l.status >= 400);
+      }
+
+      res.json({ logs, total: requestLog.length, limit: maxLogSize });
+    });
+
+    app.get('/api/operations-log', (req, res) => {
+      const limit = parseInt(req.query.limit) || 50;
+      const operation = req.query.operation;
+      let logs = operationLog.slice(-limit);
+
+      if (operation) {
+        logs = logs.filter(l => l.operation === operation);
+      }
+
+      res.json({ logs, total: operationLog.length, limit: maxOperationLogSize });
     });
 
     app.get('/api/apps', (req, res) => {
@@ -680,6 +734,7 @@ async function main() {
       const runId = Date.now().toString();
       const startTime = Date.now();
       activeTasks.set(runId, { taskName, startTime });
+      logOperation('task-started', { runId, taskName, inputKeys: Object.keys(input || {}) });
       broadcastToRunSubscribers({ type: 'run-started', runId, taskName, timestamp: new Date().toISOString() });
 
       let output = null, status = 'success', error = null;
@@ -690,6 +745,7 @@ async function main() {
         status = 'error';
         error = execError.message;
         output = { error: error, stack: execError.stack };
+        logOperation('task-error', { runId, taskName, error: error.substring(0, 100) });
       }
 
       const duration = Date.now() - startTime;
@@ -698,6 +754,7 @@ async function main() {
       await fs.ensureDir(runsDir);
       await fs.writeJSON(path.join(runsDir, `${runId}.json`), result);
       activeTasks.delete(runId);
+      logOperation('task-completed', { runId, taskName, status, duration });
       broadcastToRunSubscribers({ type: 'run-completed', runId, taskName, status, duration, timestamp: result.timestamp });
       broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });
       res.json(result);
