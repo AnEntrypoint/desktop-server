@@ -303,6 +303,41 @@ const wsRateLimiter = createWebSocketRateLimiter();
 const operationLog = [];
 const maxOperationLogSize = 500;
 
+const metricsCache = new Map();
+const CACHE_TTL_MS = 30000;
+
+function createCacheKey(category, params = {}) {
+  return `${category}:${JSON.stringify(params)}`;
+}
+
+function getFromCache(key) {
+  const entry = metricsCache.get(key);
+  if (!entry) return null;
+
+  const now = Date.now();
+  if (now - entry.timestamp > CACHE_TTL_MS) {
+    metricsCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache(key, data) {
+  metricsCache.set(key, { data, timestamp: Date.now() });
+}
+
+function invalidateCache(pattern = null) {
+  if (!pattern) {
+    metricsCache.clear();
+  } else {
+    for (const key of metricsCache.keys()) {
+      if (key.startsWith(pattern)) {
+        metricsCache.delete(key);
+      }
+    }
+  }
+}
+
 function logOperation(operation, details = {}) {
   const entry = {
     timestamp: new Date().toISOString(),
@@ -409,6 +444,32 @@ async function main() {
       }
 
       res.json({ logs, total: operationLog.length, limit: maxOperationLogSize });
+    });
+
+    app.get('/api/cache-status', (req, res) => {
+      const now = Date.now();
+      const entries = [];
+      for (const [key, entry] of metricsCache.entries()) {
+        const age = now - entry.timestamp;
+        const ttl = CACHE_TTL_MS - age;
+        entries.push({
+          key,
+          age: `${age}ms`,
+          ttl: `${Math.max(0, ttl)}ms`,
+          valid: ttl > 0
+        });
+      }
+      res.json({
+        size: metricsCache.size,
+        maxTtl: `${CACHE_TTL_MS}ms`,
+        entries: entries.sort((a, b) => parseInt(b.ttl) - parseInt(a.ttl))
+      });
+    });
+
+    app.post('/api/cache-clear', (req, res) => {
+      const pattern = req.query.pattern;
+      invalidateCache(pattern);
+      res.json({ message: pattern ? `Cache cleared (pattern: ${pattern})` : 'Cache cleared', size: metricsCache.size });
     });
 
     app.get('/api/apps', (req, res) => {
@@ -743,6 +804,7 @@ async function main() {
       await fs.writeJSON(path.join(runsDir, `${runId}.json`), result);
       activeTasks.delete(runId);
       logOperation('task-completed', { runId, taskName, status, duration });
+      invalidateCache('metrics');
       broadcastToRunSubscribers({ type: 'run-completed', runId, taskName, status, duration, timestamp: result.timestamp });
       broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });
       res.json(result);
@@ -990,47 +1052,51 @@ async function main() {
       }
     });
 
-    app.get('/api/metrics', async (req, res) => {
-      try {
-        const allRuns = [];
-        const tasksDir = path.join(process.cwd(), 'tasks');
-        if (fs.existsSync(tasksDir)) {
-          const tasks = fs.readdirSync(tasksDir)
-            .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory());
-          for (const taskName of tasks) {
-            const runsDir = path.join(tasksDir, taskName, 'runs');
-            if (fs.existsSync(runsDir)) {
-              const runs = fs.readdirSync(runsDir)
-                .filter(f => f.endsWith('.json'))
-                .map(f => {
-                  try {
-                    return JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8'));
-                  } catch (e) {
-                    return null;
-                  }
-                })
-                .filter(Boolean);
-              allRuns.push(...runs);
-            }
+    app.get('/api/metrics', asyncHandler(async (req, res) => {
+      const cacheKey = createCacheKey('metrics');
+      const cached = getFromCache(cacheKey);
+      if (cached) {
+        return res.json({ ...cached, fromCache: true });
+      }
+
+      const allRuns = [];
+      const tasksDir = path.join(process.cwd(), 'tasks');
+      if (fs.existsSync(tasksDir)) {
+        const tasks = fs.readdirSync(tasksDir)
+          .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory());
+        for (const taskName of tasks) {
+          const runsDir = path.join(tasksDir, taskName, 'runs');
+          if (fs.existsSync(runsDir)) {
+            const runs = fs.readdirSync(runsDir)
+              .filter(f => f.endsWith('.json'))
+              .map(f => {
+                try {
+                  return JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8'));
+                } catch (e) {
+                  return null;
+                }
+              })
+              .filter(Boolean);
+            allRuns.push(...runs);
           }
         }
-        const total = allRuns.length;
-        const successful = allRuns.filter(r => r.status === 'success').length;
-        const failed = allRuns.filter(r => r.status === 'error').length;
-        const durations = allRuns.map(r => r.duration || 0).filter(d => d > 0);
-        const avgDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
-        res.json({
-          totalRuns: total,
-          activeRuns: activeTasks.size,
-          successfulRuns: successful,
-          failedRuns: failed,
-          successRate: total > 0 ? (successful / total * 100).toFixed(2) : 0,
-          averageDuration: Math.round(avgDuration)
-        });
-      } catch (error) {
-        res.status(500).json(createErrorResponse('METRICS_ERROR', error.message));
       }
-    });
+      const total = allRuns.length;
+      const successful = allRuns.filter(r => r.status === 'success').length;
+      const failed = allRuns.filter(r => r.status === 'error').length;
+      const durations = allRuns.map(r => r.duration || 0).filter(d => d > 0);
+      const avgDuration = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+      const metrics = {
+        totalRuns: total,
+        activeRuns: activeTasks.size,
+        successfulRuns: successful,
+        failedRuns: failed,
+        successRate: total > 0 ? (successful / total * 100).toFixed(2) : 0,
+        averageDuration: Math.round(avgDuration)
+      };
+      setCache(cacheKey, metrics);
+      res.json(metrics);
+    }));
 
     const hotReloadClients = [];
 
