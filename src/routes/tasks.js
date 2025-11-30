@@ -60,19 +60,27 @@ export function registerTaskRoutes(app) {
 
     const runId = Date.now().toString();
     const startTime = Date.now();
-    activeTasks.set(runId, { taskName, startTime });
+    let cancelled = false;
+    activeTasks.set(runId, {
+      taskName,
+      startTime,
+      cancel: () => { cancelled = true; }
+    });
     logOperation('task-started', { runId, taskName, inputKeys: Object.keys(input || {}) });
     broadcastToRunSubscribers({ type: 'run-started', runId, taskName, timestamp: new Date().toISOString() });
 
     let output = null, status = 'success', error = null;
     try {
       const code = fs.readFileSync(codePath, 'utf8');
-      output = await executeTaskWithTimeout(taskName, code, input, CONFIG.tasks.executionTimeoutMs);
+      const timeoutMs = cancelled ? 0 : CONFIG.tasks.executionTimeoutMs;
+      output = await executeTaskWithTimeout(taskName, code, input, timeoutMs);
     } catch (execError) {
-      status = 'error';
+      status = cancelled ? 'cancelled' : 'error';
       error = execError.message;
       output = { error: error, stack: execError.stack };
-      logOperation('task-error', { runId, taskName, error: error.substring(0, 100) });
+      if (!cancelled) {
+        logOperation('task-error', { runId, taskName, error: error.substring(0, 100) });
+      }
     }
 
     const duration = Date.now() - startTime;
@@ -94,7 +102,9 @@ export function registerTaskRoutes(app) {
       return res.status(404).json(createErrorResponse('TASK_NOT_FOUND', 'Task not running or already completed'));
     }
     const task = activeTasks.get(runId);
+    task.cancel();
     activeTasks.delete(runId);
+    logOperation('task-cancelled', { runId, taskName: task.taskName });
     broadcastToRunSubscribers({ type: 'run-cancelled', runId, taskName: task.taskName, timestamp: new Date().toISOString() });
     res.json({ success: true, runId, cancelled: true, message: `Task ${runId} cancelled` });
   }));
@@ -123,8 +133,12 @@ export function registerTaskRoutes(app) {
     if (!fs.existsSync(runPath)) {
       return res.status(404).json(createErrorResponse('RUN_NOT_FOUND', 'Run not found'));
     }
-    const run = JSON.parse(fs.readFileSync(runPath, 'utf8'));
-    res.json(run);
+    try {
+      const run = JSON.parse(fs.readFileSync(runPath, 'utf8'));
+      res.json(run);
+    } catch (parseErr) {
+      res.status(400).json(createErrorResponse('INVALID_JSON', 'Run file is corrupted or invalid JSON'));
+    }
   }));
 }
 
