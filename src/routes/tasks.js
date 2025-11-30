@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { validateTaskName, sanitizeInput } from '../lib/utils.js';
+import { validateTaskName, sanitizeInput, validateInputSchema } from '../lib/utils.js';
 import { createErrorResponse, createValidationError, createForbiddenError, createNotFoundError } from '../utils/error-factory.js';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers } from '../utils/ws-broadcaster.js';
@@ -58,6 +58,23 @@ export function registerTaskRoutes(app) {
       throw createNotFoundError(`Task '${taskName}'`);
     }
 
+    const configPath = path.join(taskDir, 'config.json');
+    let config = {};
+    if (fs.existsSync(configPath)) {
+      try {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      } catch (e) {
+        throw createValidationError('Invalid task configuration', 'config');
+      }
+    }
+
+    if (config.inputs) {
+      const schemaErrors = validateInputSchema(input, config.inputs);
+      if (schemaErrors) {
+        throw createValidationError(schemaErrors.join('; '), 'input');
+      }
+    }
+
     const runId = Date.now().toString();
     const startTime = Date.now();
     let cancelled = false;
@@ -110,7 +127,18 @@ export function registerTaskRoutes(app) {
   }));
 
   app.get('/api/tasks/:taskName/history', asyncHandler(async (req, res) => {
-    const runsDir = path.join(process.cwd(), 'tasks', req.params.taskName, 'runs');
+    const { taskName } = req.params;
+    try {
+      validateTaskName(taskName);
+    } catch (e) {
+      throw createValidationError(e.message, 'taskName');
+    }
+    const taskDir = path.join(process.cwd(), 'tasks', taskName);
+    const realTaskDir = path.resolve(taskDir);
+    if (!realTaskDir.startsWith(process.cwd())) {
+      throw createForbiddenError(`Access to task '${taskName}' denied`);
+    }
+    const runsDir = path.join(taskDir, 'runs');
     if (!fs.existsSync(runsDir)) {
       return res.json([]);
     }
@@ -129,7 +157,21 @@ export function registerTaskRoutes(app) {
   }));
 
   app.get('/api/tasks/:taskName/runs/:runId', asyncHandler(async (req, res) => {
-    const runPath = path.join(process.cwd(), 'tasks', req.params.taskName, 'runs', `${req.params.runId}.json`);
+    const { taskName, runId } = req.params;
+    try {
+      validateTaskName(taskName);
+    } catch (e) {
+      throw createValidationError(e.message, 'taskName');
+    }
+    if (!runId || !/^\d+$/.test(runId)) {
+      throw createValidationError('Invalid run ID format', 'runId');
+    }
+    const taskDir = path.join(process.cwd(), 'tasks', taskName);
+    const realTaskDir = path.resolve(taskDir);
+    if (!realTaskDir.startsWith(process.cwd())) {
+      throw createForbiddenError(`Access to task '${taskName}' denied`);
+    }
+    const runPath = path.join(taskDir, 'runs', `${runId}.json`);
     if (!fs.existsSync(runPath)) {
       return res.status(404).json(createErrorResponse('RUN_NOT_FOUND', 'Run not found'));
     }
