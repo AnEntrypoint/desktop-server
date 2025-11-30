@@ -1,5 +1,6 @@
+import { CONFIG } from '../config/defaults.js';
+
 const metricsCache = new Map();
-const CACHE_TTL_MS = 30000;
 
 export function createCacheKey(category, params = {}) {
   return `${category}:${JSON.stringify(params)}`;
@@ -10,7 +11,7 @@ export function getFromCache(key) {
   if (!entry) return null;
 
   const now = Date.now();
-  if (now - entry.timestamp > CACHE_TTL_MS) {
+  if (now - entry.timestamp > CONFIG.cache.ttlMs) {
     metricsCache.delete(key);
     return null;
   }

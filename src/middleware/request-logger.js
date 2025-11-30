@@ -1,7 +1,9 @@
-const requestLog = [];
-const maxLogSize = 1000;
+import { CONFIG } from '../config/defaults.js';
 
-export function createRequestLogger(slowThresholdMs = 1000) {
+const requestLog = [];
+
+export function createRequestLogger(slowThresholdMs = null) {
+  slowThresholdMs = slowThresholdMs || CONFIG.requestLogger.slowThresholdMs;
   return (req, res, next) => {
     const requestId = Math.random().toString(36).substring(7);
     const startTime = Date.now();
@@ -24,10 +26,10 @@ export function createRequestLogger(slowThresholdMs = 1000) {
         slow: isSlow,
         bodySize: `${bodySize}B`,
         ip: req.ip || 'unknown',
-        userAgent: req.get('user-agent')?.substring(0, 100)
+        userAgent: req.get('user-agent')?.substring(0, CONFIG.requestLogger.userAgentMaxLength)
       };
 
-      if (requestLog.length >= maxLogSize) {
+      if (requestLog.length >= CONFIG.requestLogger.maxLogSize) {
         requestLog.shift();
       }
       requestLog.push(logEntry);
