@@ -59,10 +59,18 @@ export function registerFileRoutes(app) {
   app.post('/api/files/write', asyncHandler(async (req, res) => {
     const { path: filePath, content } = req.body;
     const startTime = Date.now();
+
+    if (!filePath) {
+      throw createValidationError('path is required', 'filePath');
+    }
+    if (content === undefined || content === null) {
+      throw createValidationError('content is required', 'content');
+    }
+    if (typeof content !== 'string') {
+      throw createValidationError('content must be a string', 'content');
+    }
+
     try {
-      if (content === undefined) {
-        return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Content is required'));
-      }
       const realPath = validateFilePath(filePath);
       await fs.ensureDir(path.dirname(realPath));
       const isNew = !fs.existsSync(realPath);
@@ -82,6 +90,14 @@ export function registerFileRoutes(app) {
   app.post('/api/files/mkdir', asyncHandler(async (req, res) => {
     const { path: dirPath } = req.body;
     const startTime = Date.now();
+
+    if (!dirPath) {
+      throw createValidationError('path is required', 'dirPath');
+    }
+    if (typeof dirPath !== 'string') {
+      throw createValidationError('path must be a string', 'dirPath');
+    }
+
     try {
       const realPath = validateFilePath(dirPath);
       await fs.ensureDir(realPath);
@@ -100,6 +116,14 @@ export function registerFileRoutes(app) {
   app.delete('/api/files', asyncHandler(async (req, res) => {
     const filePath = req.query.path || req.body?.path;
     const startTime = Date.now();
+
+    if (!filePath) {
+      throw createValidationError('path is required', 'filePath');
+    }
+    if (typeof filePath !== 'string') {
+      throw createValidationError('path must be a string', 'filePath');
+    }
+
     try {
       const realPath = validateFilePath(filePath);
       await fs.remove(realPath);
@@ -143,8 +167,17 @@ export function registerFileRoutes(app) {
   app.post('/api/files/copy', asyncHandler(async (req, res) => {
     const { path: filePath, newPath: destPath } = req.body;
     const startTime = Date.now();
-    if (!filePath) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'path is required'));
-    if (!destPath) return res.status(400).json(createErrorResponse('INVALID_INPUT', 'newPath is required'));
+
+    if (!filePath) {
+      throw createValidationError('path is required', 'filePath');
+    }
+    if (!destPath) {
+      throw createValidationError('newPath is required', 'destPath');
+    }
+    if (typeof filePath !== 'string' || typeof destPath !== 'string') {
+      throw createValidationError('path and newPath must be strings', 'copyParams');
+    }
+
     try {
       const realPath = validateFilePath(filePath);
       const realDest = validateFilePath(destPath);
@@ -165,10 +198,18 @@ export function registerFileRoutes(app) {
   app.post('/api/files/save', asyncHandler(async (req, res) => {
     const { path: filePath, content } = req.body;
     const startTime = Date.now();
+
+    if (!filePath) {
+      throw createValidationError('path is required', 'filePath');
+    }
+    if (content === undefined || content === null) {
+      throw createValidationError('content is required', 'content');
+    }
+    if (typeof content !== 'string') {
+      throw createValidationError('content must be a string', 'content');
+    }
+
     try {
-      if (!content) {
-        return res.status(400).json(createErrorResponse('INVALID_INPUT', 'Content is required'));
-      }
       const realPath = validateFilePath(filePath);
       await fs.ensureDir(path.dirname(realPath));
       await fs.writeFile(realPath, content, 'utf8');

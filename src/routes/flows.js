@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { createErrorResponse } from '../utils/error-factory.js';
+import { validateTaskName, sanitizeInput } from '../lib/utils.js';
+import { createErrorResponse, createValidationError, createForbiddenError } from '../utils/error-factory.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 
 export function registerFlowRoutes(app) {
@@ -25,20 +26,72 @@ export function registerFlowRoutes(app) {
   }));
 
   app.get('/api/flows/:flowId', asyncHandler(async (req, res) => {
-    const graphPath = path.join(process.cwd(), 'tasks', req.params.flowId, 'graph.json');
+    const { flowId } = req.params;
+    try {
+      validateTaskName(flowId);
+    } catch (e) {
+      throw createValidationError(e.message, 'flowId');
+    }
+
+    const taskDir = path.join(process.cwd(), 'tasks', flowId);
+    const realTaskDir = path.resolve(taskDir);
+    if (!realTaskDir.startsWith(process.cwd())) {
+      throw createForbiddenError(`Access to flow '${flowId}' denied`);
+    }
+
+    const graphPath = path.join(taskDir, 'graph.json');
     if (!fs.existsSync(graphPath)) {
       return res.status(404).json(createErrorResponse('FLOW_NOT_FOUND', 'Flow not found'));
     }
-    const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
-    res.json({ id: req.params.flowId, graph });
+
+    try {
+      const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
+      res.json({ id: flowId, graph });
+    } catch (e) {
+      throw createValidationError('Invalid flow file format', 'graph');
+    }
   }));
 
   app.post('/api/flows', asyncHandler(async (req, res) => {
     const { id, name, states } = req.body;
+
     if (!id || !name) {
-      return res.status(400).json(createErrorResponse('INVALID_INPUT', 'id and name are required'));
+      throw createValidationError('id and name are required', 'flowDefinition');
     }
+
+    try {
+      validateTaskName(id);
+    } catch (e) {
+      throw createValidationError(e.message, 'id');
+    }
+
+    const sanitizedName = sanitizeInput(name);
+    if (typeof sanitizedName !== 'string' || sanitizedName.length === 0) {
+      throw createValidationError('name must be a non-empty string', 'name');
+    }
+
+    if (states && !Array.isArray(states)) {
+      throw createValidationError('states must be an array', 'states');
+    }
+
+    if (states && states.length > 0) {
+      for (let i = 0; i < states.length; i++) {
+        const state = states[i];
+        if (!state.id || typeof state.id !== 'string') {
+          throw createValidationError(`states[${i}].id is required and must be a string`, 'states');
+        }
+        if (!/^[a-zA-Z0-9._-]+$/.test(state.id)) {
+          throw createValidationError(`states[${i}].id contains invalid characters`, 'states');
+        }
+      }
+    }
+
     const taskDir = path.join(process.cwd(), 'tasks', id);
+    const realTaskDir = path.resolve(taskDir);
+    if (!realTaskDir.startsWith(process.cwd())) {
+      throw createForbiddenError(`Access to flow '${id}' denied`);
+    }
+
     await fs.ensureDir(taskDir);
     const graph = {
       id: id,
@@ -55,11 +108,12 @@ export function registerFlowRoutes(app) {
         return acc;
       }, {})
     };
+
     await fs.writeJSON(path.join(taskDir, 'graph.json'), graph, { spaces: 2 });
     const configPath = path.join(taskDir, 'config.json');
     if (!fs.existsSync(configPath)) {
       await fs.writeJSON(configPath, {
-        name: id,
+        name: sanitizedName,
         runner: 'flow',
         inputs: []
       }, { spaces: 2 });
