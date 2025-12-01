@@ -4,6 +4,7 @@ import os from 'os';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { createServerError, createForbiddenError } from '@sequential/error-handling';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,11 +39,11 @@ export function loadStateKit() {
     resolvedMachinePath = fs.realpathSync(sequentialMachinePath);
   } catch (err) {
     console.error('Failed to resolve sequential-machine path:', err.message);
-    throw new Error('Cannot initialize StateKit: sequential-machine directory not found or inaccessible');
+    throw createServerError('Cannot initialize StateKit: sequential-machine directory not found or inaccessible', err);
   }
 
   if (!resolvedMachinePath.includes('sequential-machine')) {
-    throw new Error('Invalid sequential-machine path: potential symlink attack detected');
+    throw createForbiddenError('Invalid sequential-machine path: potential symlink attack detected');
   }
 
   let StateKit;
@@ -50,7 +51,7 @@ export function loadStateKit() {
     ({ StateKit } = require(resolvedMachinePath));
   } catch (err) {
     console.error('Failed to load StateKit from:', resolvedMachinePath);
-    throw new Error(`Cannot load StateKit: ${err.message}`);
+    throw createServerError(`Cannot load StateKit: ${err.message}`, err);
   }
 
   return StateKit;

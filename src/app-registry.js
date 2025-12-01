@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { createValidationError } from '@sequential/error-handling';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,7 +49,7 @@ class AppRegistry {
     }
 
     if (errors.length > 0) {
-      throw new Error(`Invalid manifest for ${appDir}: ${errors.join('; ')}`);
+      throw createValidationError(`Invalid manifest for ${appDir}: ${errors.join('; ')}`, 'manifest');
     }
 
     return true;
