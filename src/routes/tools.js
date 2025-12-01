@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput } from '../lib/utils.js';
 import { createErrorResponse, createValidationError } from '../utils/error-factory.js';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { writeFileAtomicJson } from '../utils/file-ops.js';
 
 export function registerToolRoutes(app) {
   app.get('/api/tools', asyncHandler(async (req, res) => {
@@ -45,7 +46,7 @@ export function registerToolRoutes(app) {
     const toolsDir = path.join(process.cwd(), '.tools');
     await fs.ensureDir(toolsDir);
     const tool = { id: name, name: sanitizeInput(name), ...(definition || {}), timestamp: new Date().toISOString() };
-    await fs.writeJSON(path.join(toolsDir, `${name}.json`), tool);
+    await writeFileAtomicJson(path.join(toolsDir, `${name}.json`), tool);
     res.json(tool);
   }));
 
@@ -75,7 +76,7 @@ export function registerToolRoutes(app) {
       return res.status(404).json(createErrorResponse('TOOL_NOT_FOUND', 'Tool not found'));
     }
     const tool = { id, ...(definition || {}), timestamp: new Date().toISOString() };
-    await fs.writeJSON(toolPath, tool);
+    await writeFileAtomicJson(toolPath, tool);
     res.json(tool);
   }));
 

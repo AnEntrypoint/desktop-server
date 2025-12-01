@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/error-handler.js';
 import { broadcastToFileSubscribers } from '../utils/ws-broadcaster.js';
 import { CONFIG } from '../config/defaults.js';
 import { logFileOperation, logFileSuccess, logBatchFileOperation, createDetailedErrorResponse } from '../utils/error-logger.js';
+import { writeFileAtomicString } from '../utils/file-ops.js';
 
 export function registerFileRoutes(app) {
   app.get('/api/files/current-path', (req, res) => {
@@ -72,9 +73,8 @@ export function registerFileRoutes(app) {
 
     try {
       const realPath = validateFilePath(filePath);
-      await fs.ensureDir(path.dirname(realPath));
       const isNew = !fs.existsSync(realPath);
-      await fs.writeFile(realPath, content, 'utf8');
+      await writeFileAtomicString(realPath, content);
       const duration = Date.now() - startTime;
       logFileSuccess('write', filePath, duration, { size: content.length, isNew });
       broadcastToFileSubscribers({ type: isNew ? 'file-created' : 'file-modified', path: filePath, timestamp: new Date().toISOString() });
@@ -211,8 +211,7 @@ export function registerFileRoutes(app) {
 
     try {
       const realPath = validateFilePath(filePath);
-      await fs.ensureDir(path.dirname(realPath));
-      await fs.writeFile(realPath, content, 'utf8');
+      await writeFileAtomicString(realPath, content);
       const duration = Date.now() - startTime;
       logFileSuccess('save', filePath, duration, { size: content.length });
       res.json({ path: realPath, success: true });

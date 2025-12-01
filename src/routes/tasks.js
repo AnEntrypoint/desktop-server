@@ -6,6 +6,7 @@ import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '../utils/ws-broadcaster.js';
 import { invalidateCache } from '../utils/cache.js';
 import { executeTaskWithTimeout } from '../utils/task-executor.js';
+import { writeFileAtomicJson } from '../utils/file-ops.js';
 import { CONFIG } from '../config/defaults.js';
 
 const activeTasks = new Map();
@@ -126,7 +127,7 @@ export function registerTaskRoutes(app) {
       throw createConflictError(`Run with ID ${runId} already exists`);
     }
 
-    await fs.writeJSON(runPath, result);
+    await writeFileAtomicJson(runPath, result);
     activeTasks.delete(runId);
     logOperation('task-completed', { runId, taskName, status, duration });
     broadcastTaskProgress(taskName, runId, { stage: status === 'success' ? 'completed' : status, percentage: 100, details: `Task ${status === 'success' ? 'completed' : status} in ${duration}ms` });
