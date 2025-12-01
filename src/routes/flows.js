@@ -2,24 +2,23 @@ import path from 'path';
 import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput } from '../lib/utils.js';
 import { createErrorResponse, createValidationError, createForbiddenError } from '../utils/error-factory.js';
+import { validateParam } from '../middleware/param-validator.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { writeFileAtomicJson } from '../utils/file-ops.js';
+import { FileStore } from '../lib/file-store.js';
 
 export function registerFlowRoutes(app) {
+  const tasksStore = new FileStore(path.join(process.cwd(), 'tasks'));
+
   app.get('/api/flows', asyncHandler(async (req, res) => {
-    const tasksDir = path.join(process.cwd(), 'tasks');
-    if (!fs.existsSync(tasksDir)) {
-      return res.json([]);
-    }
+    const tasks = tasksStore.listDirectories();
     const flows = [];
-    const tasks = fs.readdirSync(tasksDir)
-      .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory());
-    for (const name of tasks) {
-      const graphPath = path.join(tasksDir, name, 'graph.json');
+    for (const task of tasks) {
+      const graphPath = path.join(process.cwd(), 'tasks', task.id, 'graph.json');
       if (fs.existsSync(graphPath)) {
         try {
           const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
-          flows.push({ id: name, name, graph });
+          flows.push({ id: task.id, name: task.name, graph });
         } catch (e) {}
       }
     }
@@ -28,11 +27,7 @@ export function registerFlowRoutes(app) {
 
   app.get('/api/flows/:flowId', asyncHandler(async (req, res) => {
     const { flowId } = req.params;
-    try {
-      validateTaskName(flowId);
-    } catch (e) {
-      throw createValidationError(e.message, 'flowId');
-    }
+    validateParam(validateTaskName, 'flowId')(flowId);
 
     const taskDir = path.join(process.cwd(), 'tasks', flowId);
     const realTaskDir = path.resolve(taskDir);
@@ -60,11 +55,7 @@ export function registerFlowRoutes(app) {
       throw createValidationError('id and name are required', 'flowDefinition');
     }
 
-    try {
-      validateTaskName(id);
-    } catch (e) {
-      throw createValidationError(e.message, 'id');
-    }
+    validateParam(validateTaskName, 'id')(id);
 
     const sanitizedName = sanitizeInput(name);
     if (typeof sanitizedName !== 'string' || sanitizedName.length === 0) {

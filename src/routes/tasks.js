@@ -2,37 +2,22 @@ import path from 'path';
 import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput, validateInputSchema, validateAndSanitizeMetadata } from '../lib/utils.js';
 import { createErrorResponse, createValidationError, createForbiddenError, createNotFoundError, createConflictError } from '../utils/error-factory.js';
+import { validateParam } from '../middleware/param-validator.js';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '../utils/ws-broadcaster.js';
 import { invalidateCache } from '../utils/cache.js';
 import { executeTaskWithTimeout } from '../utils/task-executor.js';
 import { writeFileAtomicJson } from '../utils/file-ops.js';
+import { FileStore } from '../lib/file-store.js';
 import { CONFIG } from '../config/defaults.js';
 
 const activeTasks = new Map();
 
 export function registerTaskRoutes(app) {
+  const fileStore = new FileStore(path.join(process.cwd(), 'tasks'));
+
   app.get('/api/tasks', asyncHandler(async (req, res) => {
-    const tasksDir = path.join(process.cwd(), 'tasks');
-    if (!fs.existsSync(tasksDir)) {
-      return res.json([]);
-    }
-    const tasks = fs.readdirSync(tasksDir)
-      .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory())
-      .map(name => {
-        const configPath = path.join(tasksDir, name, 'config.json');
-        let config = { name, id: name };
-        if (fs.existsSync(configPath)) {
-          try {
-            config = { ...config, ...JSON.parse(fs.readFileSync(configPath, 'utf8')) };
-          } catch (parseErr) {
-            if (process.env.DEBUG) {
-              console.warn(`Failed to parse ${configPath}: ${parseErr.message}`);
-            }
-          }
-        }
-        return config;
-      });
+    const tasks = fileStore.listDirectories('config.json');
     res.json(tasks);
   }));
 
@@ -40,11 +25,7 @@ export function registerTaskRoutes(app) {
     let { input } = req.body;
     const { taskName } = req.params;
 
-    try {
-      validateTaskName(taskName);
-    } catch (e) {
-      throw createValidationError(e.message, 'taskName');
-    }
+    validateParam(validateTaskName, 'taskName')(taskName);
 
     input = sanitizeInput(input || {});
 
@@ -152,42 +133,24 @@ export function registerTaskRoutes(app) {
 
   app.get('/api/tasks/:taskName/history', asyncHandler(async (req, res) => {
     const { taskName } = req.params;
-    try {
-      validateTaskName(taskName);
-    } catch (e) {
-      throw createValidationError(e.message, 'taskName');
-    }
+    validateParam(validateTaskName, 'taskName')(taskName);
+
     const taskDir = path.join(process.cwd(), 'tasks', taskName);
     const realTaskDir = path.resolve(taskDir);
     if (!realTaskDir.startsWith(process.cwd())) {
       throw createForbiddenError(`Access to task '${taskName}' denied`);
     }
-    const runsDir = path.join(taskDir, 'runs');
-    if (!fs.existsSync(runsDir)) {
-      return res.json([]);
-    }
-    const runs = fs.readdirSync(runsDir)
-      .filter(f => f.endsWith('.json'))
-      .map(f => {
-        try {
-          return JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8'));
-        } catch (e) {
-          return null;
-        }
-      })
-      .filter(Boolean)
+
+    const runsStore = new FileStore(path.join(taskDir, 'runs'));
+    const runs = runsStore.listJsonFiles()
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     res.json(runs);
   }));
 
   app.get('/api/tasks/:taskName/runs/:runId', asyncHandler(async (req, res) => {
     const { taskName, runId } = req.params;
-    try {
-      validateTaskName(taskName);
-    } catch (e) {
-      throw createValidationError(e.message, 'taskName');
-    }
-    if (!runId || !/^\d+$/.test(runId)) {
+    validateParam(validateTaskName, 'taskName')(taskName);
+    if (!runId || !/^\d+/.test(runId)) {
       throw createValidationError('Invalid run ID format', 'runId');
     }
     const taskDir = path.join(process.cwd(), 'tasks', taskName);
