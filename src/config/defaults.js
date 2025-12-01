@@ -1,6 +1,8 @@
 export const CONFIG = {
   server: {
-    port: process.env.PORT || 8003
+    port: process.env.PORT || 8003,
+    hostname: process.env.HOSTNAME || 'localhost',
+    protocol: process.env.PROTOCOL || 'http'
   },
   rateLimit: {
     http: {
