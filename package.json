@@ -20,6 +20,7 @@
   "license": "MIT",
   "dependencies": {
     "@sequential/core": "*",
+    "@sequential/core-config": "*",
     "@sequential/data-access-layer": "*",
     "@sequential/dependency-injection": "*",
     "@sequential/task-execution-service": "*",
