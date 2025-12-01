@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput, validateInputSchema, validateAndSanitizeMetadata } from '../lib/utils.js';
 import { createErrorResponse, createValidationError, createForbiddenError, createNotFoundError, createConflictError } from '../utils/error-factory.js';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
-import { broadcastToRunSubscribers, broadcastToTaskSubscribers } from '../utils/ws-broadcaster.js';
+import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '../utils/ws-broadcaster.js';
 import { invalidateCache } from '../utils/cache.js';
 import { executeTaskWithTimeout } from '../utils/task-executor.js';
 import { CONFIG } from '../config/defaults.js';
@@ -85,18 +85,26 @@ export function registerTaskRoutes(app) {
     });
     logOperation('task-started', { runId, taskName, inputKeys: Object.keys(input || {}) });
     broadcastToRunSubscribers({ type: 'run-started', runId, taskName, timestamp: new Date().toISOString() });
+    broadcastTaskProgress(taskName, runId, { stage: 'preparing', percentage: 0, details: 'Initializing task execution' });
 
     let output = null, status = 'success', error = null;
     try {
+      broadcastTaskProgress(taskName, runId, { stage: 'executing', percentage: 25, details: 'Reading task code' });
       const code = fs.readFileSync(codePath, 'utf8');
+
+      broadcastTaskProgress(taskName, runId, { stage: 'executing', percentage: 50, details: 'Running task code' });
       const timeoutMs = cancelled ? 0 : CONFIG.tasks.executionTimeoutMs;
       output = await executeTaskWithTimeout(taskName, code, input, timeoutMs);
+      broadcastTaskProgress(taskName, runId, { stage: 'executing', percentage: 75, details: 'Task code completed' });
     } catch (execError) {
       status = cancelled ? 'cancelled' : 'error';
       error = execError.message;
       output = { error: error, stack: execError.stack };
       if (!cancelled) {
         logOperation('task-error', { runId, taskName, error: error.substring(0, 100) });
+        broadcastTaskProgress(taskName, runId, { stage: 'error', percentage: 100, details: error.substring(0, 100) });
+      } else {
+        broadcastTaskProgress(taskName, runId, { stage: 'cancelled', percentage: 100, details: 'Task was cancelled by user' });
       }
     }
 
@@ -121,6 +129,7 @@ export function registerTaskRoutes(app) {
     await fs.writeJSON(runPath, result);
     activeTasks.delete(runId);
     logOperation('task-completed', { runId, taskName, status, duration });
+    broadcastTaskProgress(taskName, runId, { stage: status === 'success' ? 'completed' : status, percentage: 100, details: `Task ${status === 'success' ? 'completed' : status} in ${duration}ms` });
     invalidateCache('metrics');
     broadcastToRunSubscribers({ type: 'run-completed', runId, taskName, status, duration, timestamp: result.timestamp });
     broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });

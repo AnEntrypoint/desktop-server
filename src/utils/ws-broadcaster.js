@@ -60,3 +60,43 @@ export function addFileSubscriber(ws) {
 export function removeFileSubscriber(ws) {
   fileSubscribers.delete(ws);
 }
+
+export function broadcastTaskProgress(taskName, runId, progress) {
+  broadcastToTaskSubscribers(taskName, {
+    type: 'progress',
+    runId,
+    taskName,
+    progress: {
+      stage: progress.stage || 'executing',
+      percentage: progress.percentage || 0,
+      details: progress.details || '',
+      timestamp: new Date().toISOString()
+    }
+  });
+
+  broadcastToRunSubscribers({
+    type: 'progress',
+    runId,
+    taskName,
+    progress: {
+      stage: progress.stage || 'executing',
+      percentage: progress.percentage || 0,
+      details: progress.details || '',
+      timestamp: new Date().toISOString()
+    }
+  });
+}
+
+export function broadcastRunProgress(runId, taskName, progress) {
+  broadcastToRunSubscribers({
+    type: 'progress',
+    runId,
+    taskName,
+    progress: {
+      stage: progress.stage || 'executing',
+      percentage: progress.percentage || 0,
+      details: progress.details || '',
+      timestamp: new Date().toISOString()
+    }
+  });
+}
