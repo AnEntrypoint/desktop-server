@@ -14,6 +14,46 @@ class AppRegistry {
     this.basePath = options.basePath || path.join(__dirname, '../../');
   }
 
+  validateManifest(manifest, appDir) {
+    const errors = [];
+
+    if (!manifest.id || typeof manifest.id !== 'string') {
+      errors.push('id is required and must be a string');
+    }
+    if (!manifest.name || typeof manifest.name !== 'string') {
+      errors.push('name is required and must be a string');
+    }
+    if (!manifest.entry || typeof manifest.entry !== 'string') {
+      errors.push('entry is required and must be a string');
+    }
+
+    if (manifest.version && typeof manifest.version !== 'string') {
+      errors.push('version must be a string if provided');
+    }
+
+    if (manifest.icon && typeof manifest.icon !== 'string') {
+      errors.push('icon must be a string if provided');
+    }
+
+    if (manifest.window && typeof manifest.window !== 'object') {
+      errors.push('window must be an object if provided');
+    }
+
+    if (manifest.capabilities && !Array.isArray(manifest.capabilities)) {
+      errors.push('capabilities must be an array if provided');
+    }
+
+    if (manifest.description && typeof manifest.description !== 'string') {
+      errors.push('description must be a string if provided');
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Invalid manifest for ${appDir}: ${errors.join('; ')}`);
+    }
+
+    return true;
+  }
+
   async discover() {
     console.log('Discovering apps...');
 
@@ -24,6 +64,7 @@ class AppRegistry {
       try {
         if (await fs.pathExists(manifestPath)) {
           const manifest = await fs.readJSON(manifestPath);
+          this.validateManifest(manifest, appDir);
           this.apps.set(manifest.id, {
             manifest,
             basePath: fullPath
