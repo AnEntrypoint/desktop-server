@@ -3,33 +3,34 @@ import fs from 'fs-extra';
 import { createError } from '@sequential/error-handling';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { getCacheEntry, setCacheEntry } from '@sequential/server-utilities';
+import { readJsonFiles } from '@sequential/file-operations';
+
+async function getAllRuns(includeTaskName = true) {
+  const tasksDir = path.join(process.cwd(), 'tasks');
+  if (!fs.existsSync(tasksDir)) {
+    return [];
+  }
+  const allRuns = [];
+  const tasks = fs.readdirSync(tasksDir)
+    .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory());
+  for (const taskName of tasks) {
+    const runsDir = path.join(tasksDir, taskName, 'runs');
+    if (fs.existsSync(runsDir)) {
+      const results = await readJsonFiles(runsDir);
+      for (const { content } of results) {
+        if (content) {
+          const run = includeTaskName ? { ...content, taskName } : content;
+          allRuns.push(run);
+        }
+      }
+    }
+  }
+  return allRuns;
+}
 
 export function registerRunsRoutes(app, getActiveTasks) {
   app.get('/api/runs', asyncHandler(async (req, res) => {
-    const tasksDir = path.join(process.cwd(), 'tasks');
-    if (!fs.existsSync(tasksDir)) {
-      return res.json([]);
-    }
-    const allRuns = [];
-    const tasks = fs.readdirSync(tasksDir)
-      .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory());
-    for (const taskName of tasks) {
-      const runsDir = path.join(tasksDir, taskName, 'runs');
-      if (fs.existsSync(runsDir)) {
-        const runs = fs.readdirSync(runsDir)
-          .filter(f => f.endsWith('.json'))
-          .map(f => {
-            try {
-              const run = JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8'));
-              return { ...run, taskName };
-            } catch (e) {
-              return null;
-            }
-          })
-          .filter(Boolean);
-        allRuns.push(...runs);
-      }
-    }
+    const allRuns = await getAllRuns(true);
     res.json(allRuns.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
   }));
 
@@ -40,28 +41,7 @@ export function registerRunsRoutes(app, getActiveTasks) {
       return res.json({ ...cached, fromCache: true });
     }
 
-    const allRuns = [];
-    const tasksDir = path.join(process.cwd(), 'tasks');
-    if (fs.existsSync(tasksDir)) {
-      const tasks = fs.readdirSync(tasksDir)
-        .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory());
-      for (const taskName of tasks) {
-        const runsDir = path.join(tasksDir, taskName, 'runs');
-        if (fs.existsSync(runsDir)) {
-          const runs = fs.readdirSync(runsDir)
-            .filter(f => f.endsWith('.json'))
-            .map(f => {
-              try {
-                return JSON.parse(fs.readFileSync(path.join(runsDir, f), 'utf8'));
-              } catch (e) {
-                return null;
-              }
-            })
-            .filter(Boolean);
-          allRuns.push(...runs);
-        }
-      }
-    }
+    const allRuns = await getAllRuns(false);
     const activeTasks = getActiveTasks();
     const total = allRuns.length;
     const successful = allRuns.filter(r => r.status === 'success').length;
