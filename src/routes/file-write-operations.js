@@ -18,7 +18,7 @@ export function registerFileWriteOperations(app) {
 
     try {
       const realPath = validateAndResolvePath(filePath);
-      const isNew = !fs.existsSync(realPath);
+      const isNew = !await fs.pathExists(realPath);
       await writeFileAtomicString(realPath, content);
       const duration = getDuration(startTime);
       logFileSuccess('write', filePath, duration, { size: content.length, isNew });
