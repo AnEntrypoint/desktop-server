@@ -1,5 +1,5 @@
-import { createErrorResponse } from '../utils/error-factory.js';
-import { CONFIG } from '../config/defaults.js';
+import { createErrorResponse } from '@sequential/response-formatting';
+import { CONFIG } from '@sequential/server-utilities';
 
 const RATE_LIMIT_MAP = new Map();
 const WS_CONNECTION_MAP = new Map();
