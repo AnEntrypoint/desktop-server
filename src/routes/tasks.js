@@ -4,13 +4,10 @@ import { validateParam } from '../middleware/param-validator.js';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '../utils/ws-broadcaster.js';
 import { invalidateCache } from '../utils/cache.js';
-import { TaskRepository } from '@sequential/data-access-layer';
-import { TaskService } from '@sequential/task-execution-service';
-import { CONFIG } from '../config/defaults.js';
 
-export function registerTaskRoutes(app) {
-  const repository = new TaskRepository();
-  const service = new TaskService(repository, { executionTimeoutMs: CONFIG.tasks.executionTimeoutMs });
+export function registerTaskRoutes(app, container) {
+  const repository = container.resolve('TaskRepository');
+  const service = container.resolve('TaskService');
 
   app.get('/api/tasks', asyncHandler(async (req, res) => {
     const tasks = repository.getAll();
@@ -98,6 +95,7 @@ export function registerTaskRoutes(app) {
   }));
 }
 
-export function getActiveTasks() {
+export function getActiveTasks(container) {
+  const service = container.resolve('TaskService');
   return service.getActiveTasks();
 }
