@@ -2,8 +2,9 @@ import path from 'path';
 import fs from 'fs-extra';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { CONFIG } from '@sequential/server-utilities';
-import { logFileOperation, logFileSuccess, createValidationError } from '@sequential/error-handling';
+import { logFileOperation, logFileSuccess } from '@sequential/error-handling';
 import { writeFileAtomicString } from '@sequential/file-operations';
+import { validate } from '@sequential/param-validation';
 import { validateAndResolvePath, startTiming, getDuration, handleFileError } from './file-operations-utils.js';
 
 export function registerFileReadOperations(app) {
@@ -59,15 +60,11 @@ export function registerFileReadOperations(app) {
     const { path: filePath, content } = req.body;
     const startTime = startTiming();
 
-    if (!filePath) {
-      throw createValidationError('path is required', 'path');
-    }
-    if (content === undefined || content === null) {
-      throw createValidationError('content is required', 'content');
-    }
-    if (typeof content !== 'string') {
-      throw createValidationError('content must be a string', 'content');
-    }
+    validate()
+      .required('path', filePath)
+      .required('content', content)
+      .type('content', content, 'string')
+      .execute();
 
     try {
       const realPath = validateAndResolvePath(filePath);
