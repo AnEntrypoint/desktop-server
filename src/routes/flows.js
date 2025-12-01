@@ -1,51 +1,22 @@
-import path from 'path';
-import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput } from '../lib/utils.js';
-import { createErrorResponse, createValidationError, createForbiddenError } from '../utils/error-factory.js';
+import { createErrorResponse, createValidationError } from '../utils/error-factory.js';
 import { validateParam } from '../middleware/param-validator.js';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { writeFileAtomicJson } from '../utils/file-ops.js';
-import { FileStore } from '../lib/file-store.js';
+import { FlowRepository } from '@sequential/data-access-layer';
 
 export function registerFlowRoutes(app) {
-  const tasksStore = new FileStore(path.join(process.cwd(), 'tasks'));
+  const repository = new FlowRepository();
 
   app.get('/api/flows', asyncHandler(async (req, res) => {
-    const tasks = tasksStore.listDirectories();
-    const flows = [];
-    for (const task of tasks) {
-      const graphPath = path.join(process.cwd(), 'tasks', task.id, 'graph.json');
-      if (fs.existsSync(graphPath)) {
-        try {
-          const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
-          flows.push({ id: task.id, name: task.name, graph });
-        } catch (e) {}
-      }
-    }
+    const flows = repository.getAll();
     res.json(flows);
   }));
 
   app.get('/api/flows/:flowId', asyncHandler(async (req, res) => {
     const { flowId } = req.params;
     validateParam(validateTaskName, 'flowId')(flowId);
-
-    const taskDir = path.join(process.cwd(), 'tasks', flowId);
-    const realTaskDir = path.resolve(taskDir);
-    if (!realTaskDir.startsWith(process.cwd())) {
-      throw createForbiddenError(`Access to flow '${flowId}' denied`);
-    }
-
-    const graphPath = path.join(taskDir, 'graph.json');
-    if (!fs.existsSync(graphPath)) {
-      return res.status(404).json(createErrorResponse('FLOW_NOT_FOUND', 'Flow not found'));
-    }
-
-    try {
-      const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
-      res.json({ id: flowId, graph });
-    } catch (e) {
-      throw createValidationError('Invalid flow file format', 'graph');
-    }
+    const flow = repository.get(flowId);
+    res.json(flow);
   }));
 
   app.post('/api/flows', asyncHandler(async (req, res) => {
@@ -78,15 +49,8 @@ export function registerFlowRoutes(app) {
       }
     }
 
-    const taskDir = path.join(process.cwd(), 'tasks', id);
-    const realTaskDir = path.resolve(taskDir);
-    if (!realTaskDir.startsWith(process.cwd())) {
-      throw createForbiddenError(`Access to flow '${id}' denied`);
-    }
-
-    await fs.ensureDir(taskDir);
     const graph = {
-      id: id,
+      id,
       initial: states?.find(s => s.type === 'initial')?.id || states?.[0]?.id || 'start',
       states: (states || []).reduce((acc, state) => {
         acc[state.id] = {
@@ -101,15 +65,8 @@ export function registerFlowRoutes(app) {
       }, {})
     };
 
-    await writeFileAtomicJson(path.join(taskDir, 'graph.json'), graph);
-    const configPath = path.join(taskDir, 'config.json');
-    if (!fs.existsSync(configPath)) {
-      await writeFileAtomicJson(configPath, {
-        name: sanitizedName,
-        runner: 'flow',
-        inputs: []
-      });
-    }
-    res.json({ success: true, id, message: `Flow saved to ${taskDir}` });
+    const config = { name: sanitizedName, runner: 'flow', inputs: [] };
+    await repository.save(id, graph, config);
+    res.json({ success: true, id, message: 'Flow saved' });
   }));
 }
