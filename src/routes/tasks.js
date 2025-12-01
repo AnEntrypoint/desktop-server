@@ -1,6 +1,6 @@
-import { validateTaskName, sanitizeInput } from '../lib/utils.js';
+import { validateTaskName, sanitizeInput } from '@sequential/core';
 import { createError, createValidationError } from '@sequential/error-handling';
-import { createParamValidator } from '@sequential/param-validation';
+import { validateParam } from '@sequential/param-validation';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '@sequential/websocket-broadcaster';
 import { clearCache } from '@sequential/server-utilities';
