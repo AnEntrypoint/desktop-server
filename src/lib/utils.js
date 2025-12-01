@@ -115,3 +115,22 @@ export function validateInputSchema(input, schema) {
 
   return errors.length > 0 ? errors : null;
 }
+
+export function validateAndSanitizeMetadata(metadata, maxSize = 10 * 1024 * 1024) {
+  if (!metadata || typeof metadata !== 'object') {
+    throw new Error('Metadata must be a valid object');
+  }
+
+  try {
+    JSON.stringify(metadata);
+  } catch (e) {
+    throw new Error(`Metadata is not JSON serializable: ${e.message}`);
+  }
+
+  const serialized = JSON.stringify(metadata);
+  if (serialized.length > maxSize) {
+    throw new Error(`Metadata exceeds maximum size (${serialized.length} > ${maxSize} bytes)`);
+  }
+
+  return metadata;
+}

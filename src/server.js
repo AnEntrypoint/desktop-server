@@ -138,33 +138,78 @@ async function main() {
           limiter.add(ws);
           const subscriptionId = `run-${Date.now()}`;
           addRunSubscriber(subscriptionId, ws);
+
+          ws.on('error', (error) => {
+            console.error(`WebSocket error [${subscriptionId}]:`, error.message);
+            removeRunSubscriber(subscriptionId);
+            limiter.remove(ws);
+            try {
+              ws.close(1011, 'Internal server error');
+            } catch (e) {}
+          });
+
           ws.on('close', () => {
             removeRunSubscriber(subscriptionId);
             limiter.remove(ws);
           });
-          const activeTasks = getActiveTasks();
-          ws.send(JSON.stringify({ type: 'connected', activeRuns: activeTasks.size }));
+
+          try {
+            const activeTasks = getActiveTasks();
+            ws.send(JSON.stringify({ type: 'connected', activeRuns: activeTasks.size }));
+          } catch (e) {
+            console.error(`Failed to send initial message [${subscriptionId}]:`, e.message);
+          }
         });
       } else if (req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)) {
         const taskName = req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)[1];
         wss.handleUpgrade(req, socket, head, (ws) => {
           limiter.add(ws);
           addTaskSubscriber(taskName, ws);
+
+          ws.on('error', (error) => {
+            console.error(`WebSocket error [${taskName}]:`, error.message);
+            removeTaskSubscriber(taskName, ws);
+            limiter.remove(ws);
+            try {
+              ws.close(1011, 'Internal server error');
+            } catch (e) {}
+          });
+
           ws.on('close', () => {
             removeTaskSubscriber(taskName, ws);
             limiter.remove(ws);
           });
-          ws.send(JSON.stringify({ type: 'connected', taskName }));
+
+          try {
+            ws.send(JSON.stringify({ type: 'connected', taskName }));
+          } catch (e) {
+            console.error(`Failed to send initial message for task [${taskName}]:`, e.message);
+          }
         });
       } else if (req.url.startsWith('/api/files/subscribe')) {
         wss.handleUpgrade(req, socket, head, (ws) => {
           limiter.add(ws);
           addFileSubscriber(ws);
+
+          ws.on('error', (error) => {
+            console.error('WebSocket error [files]:',  error.message);
+            removeFileSubscriber(ws);
+            limiter.remove(ws);
+            try {
+              ws.close(1011, 'Internal server error');
+            } catch (e) {}
+          });
+
           ws.on('close', () => {
             removeFileSubscriber(ws);
             limiter.remove(ws);
           });
-          ws.send(JSON.stringify({ type: 'connected', message: 'File subscription established' }));
+
+          try {
+            ws.send(JSON.stringify({ type: 'connected', message: 'File subscription established' }));
+          } catch (e) {
+            console.error('Failed to send initial message for files:', e.message);
+          }
         });
       } else {
         socket.destroy();
