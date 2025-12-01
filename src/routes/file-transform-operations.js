@@ -1,9 +1,9 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { validate } from '../middleware/validation-chain.js';
+import { validate } from '@sequential/param-validation';
 import { validateFileName } from '../lib/utils.js';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { logFileOperation, logFileSuccess } from '../utils/error-logger.js';
+import { logFileOperation, logFileSuccess } from '@sequential/error-handling';
 import { broadcastFileEvent, validateAndResolvePath, startTiming, getDuration, handleFileError } from './file-operations-utils.js';
 
 export function registerFileTransformOperations(app) {

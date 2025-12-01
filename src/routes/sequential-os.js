@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { createErrorResponse } from '../utils/error-factory.js';
+import { createError } from '@sequential/error-handling';
 import { asyncHandler } from '../middleware/error-handler.js';
 
 export function registerSequentialOsRoutes(app, kit, STATEKIT_DIR) {

@@ -1,6 +1,6 @@
 import { validateFilePath } from '../lib/utils.js';
-import { createDetailedErrorResponse } from '../utils/error-logger.js';
-import { broadcastToFileSubscribers } from '../utils/ws-broadcaster.js';
+import { createDetailedErrorResponse } from '@sequential/error-handling';
+import { broadcastToFileSubscribers } from '@sequential/websocket-broadcaster';
 
 export function broadcastFileEvent(eventType, filePath, data = {}) {
   broadcastToFileSubscribers({
