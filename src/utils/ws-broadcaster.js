@@ -1,64 +1,43 @@
-const runSubscribers = new Map();
-const taskSubscribers = new Map();
-const fileSubscribers = new Set();
+import { createSingleSubscriber, createGroupedSubscriber, createSetSubscriber } from './subscriber-manager.js';
+
+const runSubscribers = createSingleSubscriber();
+const taskSubscribers = createGroupedSubscriber();
+const fileSubscribers = createSetSubscriber();
 
 export function broadcastToRunSubscribers(message) {
-  const data = JSON.stringify(message);
-  runSubscribers.forEach((ws) => {
-    if (ws.readyState === 1) { // WebSocket.OPEN
-      ws.send(data);
-    }
-  });
+  runSubscribers.broadcast(message);
 }
 
 export function broadcastToTaskSubscribers(taskName, message) {
-  if (!taskSubscribers.has(taskName)) return;
-  const data = JSON.stringify(message);
-  taskSubscribers.get(taskName).forEach((ws) => {
-    if (ws.readyState === 1) {
-      ws.send(data);
-    }
-  });
+  taskSubscribers.broadcast(message, taskName);
 }
 
 export function broadcastToFileSubscribers(message) {
-  const data = JSON.stringify(message);
-  fileSubscribers.forEach((ws) => {
-    if (ws.readyState === 1) {
-      ws.send(data);
-    }
-  });
+  fileSubscribers.broadcast(message);
 }
 
 export function addRunSubscriber(subscriptionId, ws) {
-  runSubscribers.set(subscriptionId, ws);
+  runSubscribers.subscribe(subscriptionId, ws);
 }
 
 export function removeRunSubscriber(subscriptionId) {
-  runSubscribers.delete(subscriptionId);
+  runSubscribers.unsubscribe(subscriptionId);
 }
 
 export function addTaskSubscriber(taskName, ws) {
-  if (!taskSubscribers.has(taskName)) {
-    taskSubscribers.set(taskName, new Set());
-  }
-  taskSubscribers.get(taskName).add(ws);
+  taskSubscribers.subscribe(taskName, ws);
 }
 
 export function removeTaskSubscriber(taskName, ws) {
-  if (!taskSubscribers.has(taskName)) return;
-  taskSubscribers.get(taskName).delete(ws);
-  if (taskSubscribers.get(taskName).size === 0) {
-    taskSubscribers.delete(taskName);
-  }
+  taskSubscribers.unsubscribe(taskName, ws);
 }
 
 export function addFileSubscriber(ws) {
-  fileSubscribers.add(ws);
+  fileSubscribers.subscribe(ws);
 }
 
 export function removeFileSubscriber(ws) {
-  fileSubscribers.delete(ws);
+  fileSubscribers.unsubscribe(ws);
 }
 
 export function broadcastTaskProgress(taskName, runId, progress) {

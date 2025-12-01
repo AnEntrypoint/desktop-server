@@ -1,17 +1,13 @@
-import path from 'path';
-import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput } from '../lib/utils.js';
 import { createErrorResponse, createValidationError } from '../utils/error-factory.js';
 import { validateParam, validateRequired, validateType } from '../middleware/param-validator.js';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { writeFileAtomicJson } from '../utils/file-ops.js';
-import { FileStore } from '../lib/file-store.js';
 
-export function registerToolRoutes(app) {
-  const toolsStore = new FileStore(path.join(process.cwd(), '.tools'));
+export function registerToolRoutes(app, container) {
+  const repository = container.resolve('ToolRepository');
 
   app.get('/api/tools', asyncHandler(async (req, res) => {
-    const tools = toolsStore.listJsonFiles();
+    const tools = repository.getAll();
     res.json(tools);
   }));
 
@@ -27,9 +23,7 @@ export function registerToolRoutes(app) {
     }
 
     const tool = { id: name, name: sanitizeInput(name), ...(definition || {}), timestamp: new Date().toISOString() };
-    const toolPath = path.join(process.cwd(), '.tools', `${name}.json`);
-    await fs.ensureDir(path.dirname(toolPath));
-    await writeFileAtomicJson(toolPath, tool);
+    await repository.save(name, tool);
     res.json(tool);
   }));
 
@@ -45,12 +39,8 @@ export function registerToolRoutes(app) {
       throw createValidationError('definition must be an object', 'definition');
     }
 
-    const toolPath = path.join(process.cwd(), '.tools', `${id}.json`);
-    if (!fs.existsSync(toolPath)) {
-      return res.status(404).json(createErrorResponse('TOOL_NOT_FOUND', 'Tool not found'));
-    }
     const tool = { id, ...(definition || {}), timestamp: new Date().toISOString() };
-    await writeFileAtomicJson(toolPath, tool);
+    await repository.save(id, tool);
     res.json(tool);
   }));
 
@@ -61,11 +51,7 @@ export function registerToolRoutes(app) {
     validateType('id', id, 'string');
     validateParam(validateTaskName, 'id')(id);
 
-    const toolPath = path.join(process.cwd(), '.tools', `${id}.json`);
-    if (!fs.existsSync(toolPath)) {
-      return res.status(404).json(createErrorResponse('TOOL_NOT_FOUND', 'Tool not found'));
-    }
-    await fs.remove(toolPath);
+    await repository.delete(id);
     res.json({ success: true, id });
   }));
 }

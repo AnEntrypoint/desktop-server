@@ -1,4 +1,12 @@
-import createError from 'http-errors';
+import {
+  createValidationError as createValidationErrorImpl,
+  createNotFoundError as createNotFoundErrorImpl,
+  createForbiddenError as createForbiddenErrorImpl,
+  createConflictError as createConflictErrorImpl,
+  createUnprocessableError as createUnprocessableErrorImpl,
+  createBadRequestError as createBadRequestErrorImpl,
+  createServerError as createServerErrorImpl
+} from '../errors/app-error.js';
 
 export function createErrorResponse(code, message, details = {}) {
   return {
@@ -8,34 +16,31 @@ export function createErrorResponse(code, message, details = {}) {
 }
 
 export function createValidationError(message, field = null) {
-  const err = createError(400, message);
-  err.code = 'VALIDATION_ERROR';
+  const err = createValidationErrorImpl(message, field);
   err.field = field;
   return err;
 }
 
 export function createNotFoundError(resource) {
-  return createError(404, `${resource} not found`, { code: 'NOT_FOUND' });
+  return createNotFoundErrorImpl(resource);
 }
 
 export function createForbiddenError(message = 'Access denied') {
-  return createError(403, message, { code: 'FORBIDDEN' });
+  return createForbiddenErrorImpl(message);
 }
 
 export function createServerError(message, originalError = null) {
-  const err = createError(500, message, { code: 'INTERNAL_ERROR' });
-  err.originalError = originalError;
-  return err;
+  return createServerErrorImpl(message, originalError);
 }
 
 export function createConflictError(message = 'Resource conflict') {
-  return createError(409, message, { code: 'CONFLICT' });
+  return createConflictErrorImpl(message);
 }
 
 export function createUnprocessableError(message, details = {}) {
-  return createError(422, message, { code: 'UNPROCESSABLE_ENTITY', details });
+  return createUnprocessableErrorImpl(message, details);
 }
 
 export function createBadRequestError(message) {
-  return createError(400, message, { code: 'BAD_REQUEST' });
+  return createBadRequestErrorImpl(message);
 }
