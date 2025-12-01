@@ -2,10 +2,9 @@ import { validateTaskName, sanitizeInput } from '../lib/utils.js';
 import { createErrorResponse, createValidationError } from '../utils/error-factory.js';
 import { validateParam } from '../middleware/param-validator.js';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { FlowRepository } from '@sequential/data-access-layer';
 
-export function registerFlowRoutes(app) {
-  const repository = new FlowRepository();
+export function registerFlowRoutes(app, container) {
+  const repository = container.resolve('FlowRepository');
 
   app.get('/api/flows', asyncHandler(async (req, res) => {
     const flows = repository.getAll();
