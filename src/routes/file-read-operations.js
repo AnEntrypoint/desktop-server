@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { CONFIG } from '@sequential/server-utilities';
-import { logFileOperation, logFileSuccess } from '@sequential/error-handling';
+import { logFileOperation, logFileSuccess, createValidationError } from '@sequential/error-handling';
 import { writeFileAtomicString } from '@sequential/file-operations';
 import { validateAndResolvePath, startTiming, getDuration, handleFileError } from './file-operations-utils.js';
 
@@ -40,8 +40,9 @@ export function registerFileReadOperations(app) {
       }
       if (stat.size > CONFIG.files.maxSizeBytes) {
         const maxMb = Math.round(CONFIG.files.maxSizeBytes / (1024 * 1024));
-        logFileOperation('read', filePath, new Error('File too large'), { size: stat.size, limit: CONFIG.files.maxSizeBytes });
-        return res.status(400).json({ error: { code: 'FILE_TOO_LARGE', message: `File too large (max ${maxMb}MB)` } });
+        const error = createValidationError(`File too large (max ${maxMb}MB)`, 'file');
+        logFileOperation('read', filePath, error, { size: stat.size, limit: CONFIG.files.maxSizeBytes });
+        return res.status(error.httpCode).json({ error: { code: error.code, message: error.message } });
       }
       const content = await fs.readFile(realPath, 'utf8');
       const duration = getDuration(startTime);
@@ -59,13 +60,13 @@ export function registerFileReadOperations(app) {
     const startTime = startTiming();
 
     if (!filePath) {
-      throw new Error('path is required');
+      throw createValidationError('path is required', 'path');
     }
     if (content === undefined || content === null) {
-      throw new Error('content is required');
+      throw createValidationError('content is required', 'content');
     }
     if (typeof content !== 'string') {
-      throw new Error('content must be a string');
+      throw createValidationError('content must be a string', 'content');
     }
 
     try {
