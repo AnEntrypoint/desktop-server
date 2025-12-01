@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput } from '../lib/utils.js';
 import { createErrorResponse, createValidationError, createForbiddenError } from '../utils/error-factory.js';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { writeFileAtomicJson } from '../utils/file-ops.js';
 
 export function registerFlowRoutes(app) {
   app.get('/api/flows', asyncHandler(async (req, res) => {
@@ -109,14 +110,14 @@ export function registerFlowRoutes(app) {
       }, {})
     };
 
-    await fs.writeJSON(path.join(taskDir, 'graph.json'), graph, { spaces: 2 });
+    await writeFileAtomicJson(path.join(taskDir, 'graph.json'), graph);
     const configPath = path.join(taskDir, 'config.json');
     if (!fs.existsSync(configPath)) {
-      await fs.writeJSON(configPath, {
+      await writeFileAtomicJson(configPath, {
         name: sanitizedName,
         runner: 'flow',
         inputs: []
-      }, { spaces: 2 });
+      });
     }
     res.json({ success: true, id, message: `Flow saved to ${taskDir}` });
   }));
