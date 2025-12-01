@@ -1,18 +1,18 @@
 import { createErrorResponse } from '../utils/error-factory.js';
 import { CONFIG } from '../config/defaults.js';
 
-const rateLimitMap = new Map();
-const wsConnectionMap = new Map();
+const RATE_LIMIT_MAP = new Map();
+const WS_CONNECTION_MAP = new Map();
 
 export function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
   setInterval(() => {
     const now = Date.now();
-    for (const [ip, timestamps] of rateLimitMap.entries()) {
+    for (const [ip, timestamps] of RATE_LIMIT_MAP.entries()) {
       const valid = timestamps.filter(t => now - t < windowMs);
       if (valid.length === 0) {
-        rateLimitMap.delete(ip);
+        RATE_LIMIT_MAP.delete(ip);
       } else {
-        rateLimitMap.set(ip, valid);
+        RATE_LIMIT_MAP.set(ip, valid);
       }
     }
   }, Math.max(windowMs / 2, 30000));
@@ -21,11 +21,11 @@ export function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
     const ip = req.ip || req.connection.remoteAddress || '127.0.0.1';
     const now = Date.now();
 
-    if (!rateLimitMap.has(ip)) {
-      rateLimitMap.set(ip, []);
+    if (!RATE_LIMIT_MAP.has(ip)) {
+      RATE_LIMIT_MAP.set(ip, []);
     }
 
-    const timestamps = rateLimitMap.get(ip);
+    const timestamps = RATE_LIMIT_MAP.get(ip);
     const recentRequests = timestamps.filter(t => now - t < windowMs);
 
     if (recentRequests.length >= maxRequests) {
@@ -33,7 +33,7 @@ export function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
     }
 
     recentRequests.push(now);
-    rateLimitMap.set(ip, recentRequests);
+    RATE_LIMIT_MAP.set(ip, recentRequests);
     next();
   };
 }
@@ -41,30 +41,30 @@ export function createRateLimitMiddleware(maxRequests = 100, windowMs = 60000) {
 export function createWebSocketRateLimiter() {
   setInterval(() => {
     const now = Date.now();
-    wsConnectionMap.forEach((connections, ip) => {
+    WS_CONNECTION_MAP.forEach((connections, ip) => {
       const validConnections = connections.filter(c => c.ws.readyState === 1);
       if (validConnections.length === 0) {
-        wsConnectionMap.delete(ip);
+        WS_CONNECTION_MAP.delete(ip);
       } else {
-        wsConnectionMap.set(ip, validConnections);
+        WS_CONNECTION_MAP.set(ip, validConnections);
       }
     });
   }, CONFIG.rateLimit.websocket.cleanupIntervalMs);
 }
 
 export function checkWebSocketRateLimit(ip) {
-  if (!wsConnectionMap.has(ip)) {
-    wsConnectionMap.set(ip, []);
+  if (!WS_CONNECTION_MAP.has(ip)) {
+    WS_CONNECTION_MAP.set(ip, []);
   }
 
-  const connections = wsConnectionMap.get(ip);
+  const connections = WS_CONNECTION_MAP.get(ip);
 
   return {
     ip,
     isAllowed: () => connections.length < CONFIG.rateLimit.websocket.maxConnectionsPerIp,
     getRemainingConnections: () => Math.max(0, CONFIG.rateLimit.websocket.maxConnectionsPerIp - connections.length),
     add: (ws) => {
-      const connections = wsConnectionMap.get(ip);
+      const connections = WS_CONNECTION_MAP.get(ip);
       if (connections.length >= CONFIG.rateLimit.websocket.maxConnectionsPerIp) {
         return false;
       }
@@ -72,11 +72,11 @@ export function checkWebSocketRateLimit(ip) {
       return true;
     },
     remove: (ws) => {
-      const connections = wsConnectionMap.get(ip);
+      const connections = WS_CONNECTION_MAP.get(ip);
       const index = connections.findIndex(c => c.ws === ws);
       if (index !== -1) {
         connections.splice(index, 1);
-        if (connections.length === 0) wsConnectionMap.delete(ip);
+        if (connections.length === 0) WS_CONNECTION_MAP.delete(ip);
       }
     }
   };

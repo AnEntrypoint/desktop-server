@@ -1,7 +1,8 @@
 import fs from 'fs-extra';
-import { validate } from '../middleware/validation-chain.js';
+import { validate } from '@sequential/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { logFileOperation, logFileSuccess } from '../utils/error-logger.js';
+import { logFileOperation, logFileSuccess } from '@sequential/error-handling';
+import { writeFileAtomicString } from '@sequential/file-operations';
 import { broadcastFileEvent, validateAndResolvePath, startTiming, getDuration, handleFileError } from './file-operations-utils.js';
 
 export function registerFileWriteOperations(app) {
@@ -18,7 +19,6 @@ export function registerFileWriteOperations(app) {
     try {
       const realPath = validateAndResolvePath(filePath);
       const isNew = !fs.existsSync(realPath);
-      const { writeFileAtomicString } = await import('../utils/file-ops.js');
       await writeFileAtomicString(realPath, content);
       const duration = getDuration(startTime);
       logFileSuccess('write', filePath, duration, { size: content.length, isNew });

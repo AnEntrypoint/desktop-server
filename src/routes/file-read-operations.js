@@ -1,8 +1,9 @@
 import path from 'path';
 import fs from 'fs-extra';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { CONFIG } from '../config/defaults.js';
-import { logFileOperation, logFileSuccess } from '../utils/error-logger.js';
+import { CONFIG } from '@sequential/server-utilities';
+import { logFileOperation, logFileSuccess } from '@sequential/error-handling';
+import { writeFileAtomicString } from '@sequential/file-operations';
 import { validateAndResolvePath, startTiming, getDuration, handleFileError } from './file-operations-utils.js';
 
 export function registerFileReadOperations(app) {
@@ -69,7 +70,6 @@ export function registerFileReadOperations(app) {
 
     try {
       const realPath = validateAndResolvePath(filePath);
-      const { writeFileAtomicString } = await import('../utils/file-ops.js');
       await writeFileAtomicString(realPath, content);
       const duration = getDuration(startTime);
       logFileSuccess('save', filePath, duration, { size: content.length });

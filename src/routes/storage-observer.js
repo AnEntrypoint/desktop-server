@@ -1,7 +1,7 @@
 import { asyncHandler } from '../middleware/error-handler.js';
-import { createErrorResponse } from '../utils/error-factory.js';
+import { createError } from '@sequential/error-handling';
 
-const storageState = {
+const STORAGE_STATE = {
   runs: new Map(),
   tasks: new Map(),
   flows: new Map(),
@@ -14,20 +14,20 @@ export function registerStorageObserverRoutes(app) {
     const status = {
       timestamp: new Date().toISOString(),
       storage: {
-        runs: storageState.runs.size,
-        tasks: storageState.tasks.size,
-        flows: storageState.flows.size,
-        tools: storageState.tools.size,
-        appState: storageState.appState.size
+        runs: STORAGE_STATE.runs.size,
+        tasks: STORAGE_STATE.tasks.size,
+        flows: STORAGE_STATE.flows.size,
+        tools: STORAGE_STATE.tools.size,
+        appState: STORAGE_STATE.appState.size
       },
-      totalItems: Array.from(storageState).reduce((acc, [, map]) => acc + map.size, 0),
+      totalItems: Array.from(STORAGE_STATE).reduce((acc, [, map]) => acc + map.size, 0),
       memoryUsage: process.memoryUsage()
     };
     res.json(status);
   }));
 
   app.get('/api/storage/runs', asyncHandler((req, res) => {
-    const runs = Array.from(storageState.runs.entries()).map(([id, data]) => ({
+    const runs = Array.from(STORAGE_STATE.runs.entries()).map(([id, data]) => ({
       id,
       ...data,
       timestamp: new Date(data.timestamp).toISOString()
@@ -37,7 +37,7 @@ export function registerStorageObserverRoutes(app) {
 
   app.get('/api/storage/runs/:runId', asyncHandler((req, res) => {
     const { runId } = req.params;
-    const run = storageState.runs.get(runId);
+    const run = STORAGE_STATE.runs.get(runId);
     if (!run) {
       return res.status(404).json(createErrorResponse('RUN_NOT_FOUND', 'Run not found in storage'));
     }
@@ -45,7 +45,7 @@ export function registerStorageObserverRoutes(app) {
   }));
 
   app.get('/api/storage/tasks', asyncHandler((req, res) => {
-    const tasks = Array.from(storageState.tasks.entries()).map(([name, data]) => ({
+    const tasks = Array.from(STORAGE_STATE.tasks.entries()).map(([name, data]) => ({
       name,
       ...data
     }));
@@ -53,7 +53,7 @@ export function registerStorageObserverRoutes(app) {
   }));
 
   app.get('/api/storage/flows', asyncHandler((req, res) => {
-    const flows = Array.from(storageState.flows.entries()).map(([id, data]) => ({
+    const flows = Array.from(STORAGE_STATE.flows.entries()).map(([id, data]) => ({
       id,
       ...data
     }));
@@ -61,7 +61,7 @@ export function registerStorageObserverRoutes(app) {
   }));
 
   app.get('/api/storage/tools', asyncHandler((req, res) => {
-    const tools = Array.from(storageState.tools.entries()).map(([id, data]) => ({
+    const tools = Array.from(STORAGE_STATE.tools.entries()).map(([id, data]) => ({
       id,
       ...data
     }));
@@ -69,7 +69,7 @@ export function registerStorageObserverRoutes(app) {
   }));
 
   app.get('/api/storage/app-state', asyncHandler((req, res) => {
-    const appState = Array.from(storageState.appState.entries()).map(([appId, state]) => ({
+    const appState = Array.from(STORAGE_STATE.appState.entries()).map(([appId, state]) => ({
       appId,
       ...state
     }));
@@ -84,7 +84,7 @@ export function registerStorageObserverRoutes(app) {
       return res.status(400).json(createErrorResponse('INVALID_TYPE', 'Invalid storage type'));
     }
 
-    const map = storageState[type];
+    const map = STORAGE_STATE[type];
     map.set(id, { ...data, storedAt: new Date().toISOString() });
 
     res.json({ success: true, type, id, stored: map.has(id) });
@@ -94,27 +94,27 @@ export function registerStorageObserverRoutes(app) {
     const { type } = req.params;
 
     if (type === 'all') {
-      Object.values(storageState).forEach(map => map.clear());
+      Object.values(STORAGE_STATE).forEach(map => map.clear());
       return res.json({ success: true, message: 'All storage cleared' });
     }
 
-    if (!storageState[type]) {
+    if (!STORAGE_STATE[type]) {
       return res.status(400).json(createErrorResponse('INVALID_TYPE', 'Invalid storage type'));
     }
 
-    const count = storageState[type].size;
-    storageState[type].clear();
+    const count = STORAGE_STATE[type].size;
+    STORAGE_STATE[type].clear();
     res.json({ success: true, type, cleared: count });
   }));
 
   app.get('/api/storage/export', asyncHandler((req, res) => {
     const exported = {
       timestamp: new Date().toISOString(),
-      runs: Array.from(storageState.runs.entries()).map(([id, data]) => ({ id, ...data })),
-      tasks: Array.from(storageState.tasks.entries()).map(([name, data]) => ({ name, ...data })),
-      flows: Array.from(storageState.flows.entries()).map(([id, data]) => ({ id, ...data })),
-      tools: Array.from(storageState.tools.entries()).map(([id, data]) => ({ id, ...data })),
-      appState: Array.from(storageState.appState.entries()).map(([appId, state]) => ({ appId, ...state }))
+      runs: Array.from(STORAGE_STATE.runs.entries()).map(([id, data]) => ({ id, ...data })),
+      tasks: Array.from(STORAGE_STATE.tasks.entries()).map(([name, data]) => ({ name, ...data })),
+      flows: Array.from(STORAGE_STATE.flows.entries()).map(([id, data]) => ({ id, ...data })),
+      tools: Array.from(STORAGE_STATE.tools.entries()).map(([id, data]) => ({ id, ...data })),
+      appState: Array.from(STORAGE_STATE.appState.entries()).map(([appId, state]) => ({ appId, ...state }))
     };
 
     const filename = `storage-export-${Date.now()}.json`;
@@ -125,25 +125,25 @@ export function registerStorageObserverRoutes(app) {
 }
 
 export function getStorageState() {
-  return storageState;
+  return STORAGE_STATE;
 }
 
 export function storeRun(runId, runData) {
-  storageState.runs.set(runId, { ...runData, storedAt: new Date().toISOString() });
+  STORAGE_STATE.runs.set(runId, { ...runData, storedAt: new Date().toISOString() });
 }
 
 export function storeTask(taskName, taskData) {
-  storageState.tasks.set(taskName, { ...taskData, storedAt: new Date().toISOString() });
+  STORAGE_STATE.tasks.set(taskName, { ...taskData, storedAt: new Date().toISOString() });
 }
 
 export function storeFlow(flowId, flowData) {
-  storageState.flows.set(flowId, { ...flowData, storedAt: new Date().toISOString() });
+  STORAGE_STATE.flows.set(flowId, { ...flowData, storedAt: new Date().toISOString() });
 }
 
 export function storeTool(toolId, toolData) {
-  storageState.tools.set(toolId, { ...toolData, storedAt: new Date().toISOString() });
+  STORAGE_STATE.tools.set(toolId, { ...toolData, storedAt: new Date().toISOString() });
 }
 
 export function storeAppState(appId, state) {
-  storageState.appState.set(appId, { ...state, storedAt: new Date().toISOString() });
+  STORAGE_STATE.appState.set(appId, { ...state, storedAt: new Date().toISOString() });
 }
