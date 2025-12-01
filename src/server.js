@@ -29,7 +29,26 @@ const __dirname = dirname(__filename);
 const require = createRequire(import.meta.url);
 
 const sequentialMachinePath = path.join(__dirname, '../../sequential-machine');
-const { StateKit } = require(sequentialMachinePath);
+
+let resolvedMachinePath;
+try {
+  resolvedMachinePath = fs.realpathSync(sequentialMachinePath);
+} catch (err) {
+  console.error('Failed to resolve sequential-machine path:', err.message);
+  throw new Error('Cannot initialize StateKit: sequential-machine directory not found or inaccessible');
+}
+
+if (!resolvedMachinePath.includes('sequential-machine')) {
+  throw new Error('Invalid sequential-machine path: potential symlink attack detected');
+}
+
+let { StateKit };
+try {
+  ({ StateKit } = require(resolvedMachinePath));
+} catch (err) {
+  console.error('Failed to load StateKit from:', resolvedMachinePath);
+  throw new Error(`Cannot load StateKit: ${err.message}`);
+}
 
 const PORT = process.env.PORT || 8003;
 const HOME_DIR = os.homedir();
@@ -133,9 +152,19 @@ async function main() {
       const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'] || '127.0.0.1';
       const limiter = checkWebSocketRateLimit(clientIp);
 
+      if (!limiter.isAllowed()) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\n\r\n');
+        socket.write(JSON.stringify({ error: 'Too many WebSocket connections from this IP', remaining: 0 }));
+        socket.destroy();
+        return;
+      }
+
       if (req.url.startsWith('/api/runs/subscribe')) {
         wss.handleUpgrade(req, socket, head, (ws) => {
-          limiter.add(ws);
+          if (!limiter.add(ws)) {
+            ws.close(1008, 'Per-IP connection limit exceeded');
+            return;
+          }
           const subscriptionId = `run-${Date.now()}`;
           addRunSubscriber(subscriptionId, ws);
 
@@ -163,7 +192,10 @@ async function main() {
       } else if (req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)) {
         const taskName = req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)[1];
         wss.handleUpgrade(req, socket, head, (ws) => {
-          limiter.add(ws);
+          if (!limiter.add(ws)) {
+            ws.close(1008, 'Per-IP connection limit exceeded');
+            return;
+          }
           addTaskSubscriber(taskName, ws);
 
           ws.on('error', (error) => {
@@ -188,7 +220,10 @@ async function main() {
         });
       } else if (req.url.startsWith('/api/files/subscribe')) {
         wss.handleUpgrade(req, socket, head, (ws) => {
-          limiter.add(ws);
+          if (!limiter.add(ws)) {
+            ws.close(1008, 'Per-IP connection limit exceeded');
+            return;
+          }
           addFileSubscriber(ws);
 
           ws.on('error', (error) => {
