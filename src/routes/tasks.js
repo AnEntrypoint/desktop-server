@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { validateTaskName, sanitizeInput, validateInputSchema } from '../lib/utils.js';
-import { createErrorResponse, createValidationError, createForbiddenError, createNotFoundError } from '../utils/error-factory.js';
+import { validateTaskName, sanitizeInput, validateInputSchema, validateAndSanitizeMetadata } from '../lib/utils.js';
+import { createErrorResponse, createValidationError, createForbiddenError, createNotFoundError, createConflictError } from '../utils/error-factory.js';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers } from '../utils/ws-broadcaster.js';
 import { invalidateCache } from '../utils/cache.js';
@@ -75,7 +75,7 @@ export function registerTaskRoutes(app) {
       }
     }
 
-    const runId = Date.now().toString();
+    const runId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${process.pid}`;
     const startTime = Date.now();
     let cancelled = false;
     activeTasks.set(runId, {
@@ -102,9 +102,23 @@ export function registerTaskRoutes(app) {
 
     const duration = Date.now() - startTime;
     const result = { runId, status, input, output, error, duration, timestamp: new Date().toISOString() };
+
+    try {
+      validateAndSanitizeMetadata(result);
+    } catch (validationError) {
+      logOperation('task-metadata-validation-failed', { runId, taskName, error: validationError.message });
+      throw createValidationError(`Cannot store task result: ${validationError.message}`, 'metadata');
+    }
+
     const runsDir = path.join(taskDir, 'runs');
     await fs.ensureDir(runsDir);
-    await fs.writeJSON(path.join(runsDir, `${runId}.json`), result);
+    const runPath = path.join(runsDir, `${runId}.json`);
+
+    if (await fs.pathExists(runPath)) {
+      throw createConflictError(`Run with ID ${runId} already exists`);
+    }
+
+    await fs.writeJSON(runPath, result);
     activeTasks.delete(runId);
     logOperation('task-completed', { runId, taskName, status, duration });
     invalidateCache('metrics');
