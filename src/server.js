@@ -6,9 +6,10 @@ import { dirname } from 'path';
 import { AppRegistry } from './app-registry.js';
 import http from 'http';
 
-import { createRequestLogger } from './middleware/request-logger.js';
-import { createRateLimitMiddleware } from './middleware/rate-limit.js';
+import { createRequestLogger } from '@sequential/server-utilities';
+import { createRateLimitMiddleware } from '@sequential/input-sanitization';
 import { createErrorHandler } from './middleware/error-handler.js';
+import { securityHeaders } from './middleware/security-headers.js';
 import { registerSequentialOsRoutes } from './routes/sequential-os.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerTaskRoutes, getActiveTasks } from './routes/tasks.js';
@@ -18,7 +19,7 @@ import { registerRunsRoutes } from './routes/runs.js';
 import { registerAppRoutes } from './routes/apps.js';
 import { registerDebugRoutes } from './routes/debug.js';
 import { registerStorageObserverRoutes } from './routes/storage-observer.js';
-import { CONFIG } from './config/defaults.js';
+import { CONFIG } from '@sequential/server-utilities';
 import { setupDIContainer } from './utils/di-setup.js';
 import { ensureDirectories, loadStateKit, initializeStateKit } from './utils/initialization.js';
 import { setupHotReload, closeFileWatchers } from './utils/hot-reload.js';
@@ -63,6 +64,7 @@ async function main() {
 
     const app = express();
     app.use(express.json({ limit: '50mb' }));
+    app.use(securityHeaders);
 
     app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');

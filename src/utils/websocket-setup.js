@@ -1,7 +1,7 @@
 import { WebSocketServer } from 'ws';
 import { createWebSocketRateLimiter, checkWebSocketRateLimit } from '../middleware/rate-limit.js';
-import { createSubscriptionHandler } from './ws-subscription-factory.js';
-import { addRunSubscriber, removeRunSubscriber, addTaskSubscriber, removeTaskSubscriber, addFileSubscriber, removeFileSubscriber } from './ws-broadcaster.js';
+import { createSubscriptionHandler } from '@sequential/websocket-factory';
+import { addRunSubscriber, removeRunSubscriber, addTaskSubscriber, removeTaskSubscriber, addFileSubscriber, removeFileSubscriber } from '@sequential/websocket-broadcaster';
 
 export function setupWebSocket(httpServer, getActiveTasks) {
   const wss = new WebSocketServer({ noServer: true });

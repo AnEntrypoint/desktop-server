@@ -1,13 +1,15 @@
-import { createErrorHandler as createAppErrorHandler } from '../errors/app-error.js';
+import { createErrorHandler as createAppErrorHandler } from '@sequential/error-handling';
+
+const operationLog = [];
 
 export function createErrorHandler() {
-  const appHandler = createAppErrorHandler();
-  return (err, req, res, next) => {
-    console.error('Error:', err);
-    appHandler(err, req, res, next);
-  };
+  return createAppErrorHandler();
 }
 
 export function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+export function getOperationLog() {
+  return operationLog;
 }
