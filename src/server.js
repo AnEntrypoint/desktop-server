@@ -14,6 +14,7 @@ import { createRequestLogger } from './middleware/request-logger.js';
 import { createRateLimitMiddleware, createWebSocketRateLimiter, checkWebSocketRateLimit } from './middleware/rate-limit.js';
 import { createErrorHandler, asyncHandler, logOperation } from './middleware/error-handler.js';
 import { addRunSubscriber, removeRunSubscriber, addTaskSubscriber, removeTaskSubscriber, addFileSubscriber, removeFileSubscriber, broadcastToRunSubscribers } from './utils/ws-broadcaster.js';
+import { createSubscriptionHandler } from './utils/ws-subscription-factory.js';
 import { registerSequentialOsRoutes } from './routes/sequential-os.js';
 import { registerFileRoutes } from './routes/files.js';
 import { registerTaskRoutes, getActiveTasks } from './routes/tasks.js';
@@ -151,6 +152,39 @@ async function main() {
 
     createWebSocketRateLimiter();
 
+    const subscriptionHandlers = [
+      createSubscriptionHandler({
+        urlPattern: '/api/runs/subscribe',
+        paramExtractor: () => `run-${Date.now()}`,
+        onSubscribe: (id, ws) => addRunSubscriber(id, ws),
+        onUnsubscribe: (id, ws) => removeRunSubscriber(id),
+        getInitialMessage: (id, getActiveTasks) => ({
+          type: 'connected',
+          activeRuns: getActiveTasks().size
+        }),
+        contextLabel: (id) => id
+      }),
+      createSubscriptionHandler({
+        urlPattern: /^\/api\/tasks\/([^/]+)\/subscribe$/,
+        paramExtractor: (url) => url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)[1],
+        onSubscribe: (taskName, ws) => addTaskSubscriber(taskName, ws),
+        onUnsubscribe: (taskName, ws) => removeTaskSubscriber(taskName, ws),
+        getInitialMessage: (taskName) => ({ type: 'connected', taskName }),
+        contextLabel: (taskName) => taskName
+      }),
+      createSubscriptionHandler({
+        urlPattern: '/api/files/subscribe',
+        paramExtractor: () => 'files',
+        onSubscribe: (ctx, ws) => addFileSubscriber(ws),
+        onUnsubscribe: (ctx, ws) => removeFileSubscriber(ws),
+        getInitialMessage: () => ({
+          type: 'connected',
+          message: 'File subscription established'
+        }),
+        contextLabel: 'files'
+      })
+    ];
+
     httpServer.on('upgrade', (req, socket, head) => {
       const clientIp = req.socket.remoteAddress || req.headers['x-forwarded-for'] || '127.0.0.1';
       const limiter = checkWebSocketRateLimit(clientIp);
@@ -162,93 +196,9 @@ async function main() {
         return;
       }
 
-      if (req.url.startsWith('/api/runs/subscribe')) {
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          if (!limiter.add(ws)) {
-            ws.close(1008, 'Per-IP connection limit exceeded');
-            return;
-          }
-          const subscriptionId = `run-${Date.now()}`;
-          addRunSubscriber(subscriptionId, ws);
-
-          ws.on('error', (error) => {
-            console.error(`WebSocket error [${subscriptionId}]:`, error.message);
-            removeRunSubscriber(subscriptionId);
-            limiter.remove(ws);
-            try {
-              ws.close(1011, 'Internal server error');
-            } catch (e) {}
-          });
-
-          ws.on('close', () => {
-            removeRunSubscriber(subscriptionId);
-            limiter.remove(ws);
-          });
-
-          try {
-            const activeTasks = getActiveTasks();
-            ws.send(JSON.stringify({ type: 'connected', activeRuns: activeTasks.size }));
-          } catch (e) {
-            console.error(`Failed to send initial message [${subscriptionId}]:`, e.message);
-          }
-        });
-      } else if (req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)) {
-        const taskName = req.url.match(/^\/api\/tasks\/([^/]+)\/subscribe$/)[1];
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          if (!limiter.add(ws)) {
-            ws.close(1008, 'Per-IP connection limit exceeded');
-            return;
-          }
-          addTaskSubscriber(taskName, ws);
-
-          ws.on('error', (error) => {
-            console.error(`WebSocket error [${taskName}]:`, error.message);
-            removeTaskSubscriber(taskName, ws);
-            limiter.remove(ws);
-            try {
-              ws.close(1011, 'Internal server error');
-            } catch (e) {}
-          });
-
-          ws.on('close', () => {
-            removeTaskSubscriber(taskName, ws);
-            limiter.remove(ws);
-          });
-
-          try {
-            ws.send(JSON.stringify({ type: 'connected', taskName }));
-          } catch (e) {
-            console.error(`Failed to send initial message for task [${taskName}]:`, e.message);
-          }
-        });
-      } else if (req.url.startsWith('/api/files/subscribe')) {
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          if (!limiter.add(ws)) {
-            ws.close(1008, 'Per-IP connection limit exceeded');
-            return;
-          }
-          addFileSubscriber(ws);
-
-          ws.on('error', (error) => {
-            console.error('WebSocket error [files]:',  error.message);
-            removeFileSubscriber(ws);
-            limiter.remove(ws);
-            try {
-              ws.close(1011, 'Internal server error');
-            } catch (e) {}
-          });
-
-          ws.on('close', () => {
-            removeFileSubscriber(ws);
-            limiter.remove(ws);
-          });
-
-          try {
-            ws.send(JSON.stringify({ type: 'connected', message: 'File subscription established' }));
-          } catch (e) {
-            console.error('Failed to send initial message for files:', e.message);
-          }
-        });
+      const handler = subscriptionHandlers.find(h => h.matches(req.url));
+      if (handler) {
+        handler.handle(wss, req, socket, head, limiter, getActiveTasks);
       } else {
         socket.destroy();
       }
