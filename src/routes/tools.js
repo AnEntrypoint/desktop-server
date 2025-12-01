@@ -2,51 +2,34 @@ import path from 'path';
 import fs from 'fs-extra';
 import { validateTaskName, sanitizeInput } from '../lib/utils.js';
 import { createErrorResponse, createValidationError } from '../utils/error-factory.js';
+import { validateParam, validateRequired, validateType } from '../middleware/param-validator.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { writeFileAtomicJson } from '../utils/file-ops.js';
+import { FileStore } from '../lib/file-store.js';
 
 export function registerToolRoutes(app) {
+  const toolsStore = new FileStore(path.join(process.cwd(), '.tools'));
+
   app.get('/api/tools', asyncHandler(async (req, res) => {
-    const toolsDir = path.join(process.cwd(), '.tools');
-    if (!fs.existsSync(toolsDir)) {
-      return res.json([]);
-    }
-    const tools = fs.readdirSync(toolsDir)
-      .filter(f => f.endsWith('.json'))
-      .map(f => {
-        try {
-          return JSON.parse(fs.readFileSync(path.join(toolsDir, f), 'utf8'));
-        } catch (e) {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    const tools = toolsStore.listJsonFiles();
     res.json(tools);
   }));
 
   app.post('/api/tools', asyncHandler(async (req, res) => {
     const { name, definition } = req.body;
 
-    if (!name) {
-      throw createValidationError('name is required', 'name');
-    }
-    if (typeof name !== 'string') {
-      throw createValidationError('name must be a string', 'name');
-    }
-    try {
-      validateTaskName(name);
-    } catch (e) {
-      throw createValidationError(e.message, 'name');
-    }
+    validateRequired('name', name);
+    validateType('name', name, 'string');
+    validateParam(validateTaskName, 'name')(name);
 
     if (definition && typeof definition !== 'object') {
       throw createValidationError('definition must be an object', 'definition');
     }
 
-    const toolsDir = path.join(process.cwd(), '.tools');
-    await fs.ensureDir(toolsDir);
     const tool = { id: name, name: sanitizeInput(name), ...(definition || {}), timestamp: new Date().toISOString() };
-    await writeFileAtomicJson(path.join(toolsDir, `${name}.json`), tool);
+    const toolPath = path.join(process.cwd(), '.tools', `${name}.json`);
+    await fs.ensureDir(path.dirname(toolPath));
+    await writeFileAtomicJson(toolPath, tool);
     res.json(tool);
   }));
 
@@ -54,24 +37,15 @@ export function registerToolRoutes(app) {
     const { definition } = req.body;
     const { id } = req.params;
 
-    if (!id) {
-      throw createValidationError('id is required', 'id');
-    }
-    if (typeof id !== 'string') {
-      throw createValidationError('id must be a string', 'id');
-    }
-    try {
-      validateTaskName(id);
-    } catch (e) {
-      throw createValidationError(e.message, 'id');
-    }
+    validateRequired('id', id);
+    validateType('id', id, 'string');
+    validateParam(validateTaskName, 'id')(id);
 
     if (definition && typeof definition !== 'object') {
       throw createValidationError('definition must be an object', 'definition');
     }
 
-    const toolsDir = path.join(process.cwd(), '.tools');
-    const toolPath = path.join(toolsDir, `${id}.json`);
+    const toolPath = path.join(process.cwd(), '.tools', `${id}.json`);
     if (!fs.existsSync(toolPath)) {
       return res.status(404).json(createErrorResponse('TOOL_NOT_FOUND', 'Tool not found'));
     }
@@ -83,20 +57,11 @@ export function registerToolRoutes(app) {
   app.delete('/api/tools/:id', asyncHandler(async (req, res) => {
     const { id } = req.params;
 
-    if (!id) {
-      throw createValidationError('id is required', 'id');
-    }
-    if (typeof id !== 'string') {
-      throw createValidationError('id must be a string', 'id');
-    }
-    try {
-      validateTaskName(id);
-    } catch (e) {
-      throw createValidationError(e.message, 'id');
-    }
+    validateRequired('id', id);
+    validateType('id', id, 'string');
+    validateParam(validateTaskName, 'id')(id);
 
-    const toolsDir = path.join(process.cwd(), '.tools');
-    const toolPath = path.join(toolsDir, `${id}.json`);
+    const toolPath = path.join(process.cwd(), '.tools', `${id}.json`);
     if (!fs.existsSync(toolPath)) {
       return res.status(404).json(createErrorResponse('TOOL_NOT_FOUND', 'Tool not found'));
     }

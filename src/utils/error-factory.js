@@ -1,62 +1,41 @@
+import createError from 'http-errors';
+
 export function createErrorResponse(code, message, details = {}) {
   return {
-    error: {
-      code,
-      message,
-      details
-    },
+    error: { code, message, details },
     timestamp: new Date().toISOString()
   };
 }
 
 export function createValidationError(message, field = null) {
-  const err = new Error(message);
+  const err = createError(400, message);
   err.code = 'VALIDATION_ERROR';
-  err.status = 400;
   err.field = field;
   return err;
 }
 
 export function createNotFoundError(resource) {
-  const err = new Error(`${resource} not found`);
-  err.code = 'NOT_FOUND';
-  err.status = 404;
-  return err;
+  return createError(404, `${resource} not found`, { code: 'NOT_FOUND' });
 }
 
 export function createForbiddenError(message = 'Access denied') {
-  const err = new Error(message);
-  err.code = 'FORBIDDEN';
-  err.status = 403;
-  return err;
+  return createError(403, message, { code: 'FORBIDDEN' });
 }
 
 export function createServerError(message, originalError = null) {
-  const err = new Error(message);
-  err.code = 'INTERNAL_ERROR';
-  err.status = 500;
+  const err = createError(500, message, { code: 'INTERNAL_ERROR' });
   err.originalError = originalError;
   return err;
 }
 
 export function createConflictError(message = 'Resource conflict') {
-  const err = new Error(message);
-  err.code = 'CONFLICT';
-  err.status = 409;
-  return err;
+  return createError(409, message, { code: 'CONFLICT' });
 }
 
 export function createUnprocessableError(message, details = {}) {
-  const err = new Error(message);
-  err.code = 'UNPROCESSABLE_ENTITY';
-  err.status = 422;
-  err.details = details;
-  return err;
+  return createError(422, message, { code: 'UNPROCESSABLE_ENTITY', details });
 }
 
 export function createBadRequestError(message) {
-  const err = new Error(message);
-  err.code = 'BAD_REQUEST';
-  err.status = 400;
-  return err;
+  return createError(400, message, { code: 'BAD_REQUEST' });
 }
