@@ -23,6 +23,7 @@ import { registerRunsRoutes } from './routes/runs.js';
 import { registerAppRoutes } from './routes/apps.js';
 import { registerDebugRoutes } from './routes/debug.js';
 import { registerStorageObserverRoutes } from './routes/storage-observer.js';
+import { CONFIG } from './config/defaults.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,7 +51,9 @@ try {
   throw new Error(`Cannot load StateKit: ${err.message}`);
 }
 
-const PORT = process.env.PORT || 8003;
+const PORT = CONFIG.server.port;
+const HOSTNAME = CONFIG.server.hostname;
+const PROTOCOL = CONFIG.server.protocol;
 const HOME_DIR = os.homedir();
 const STATEKIT_DIR = process.env.SEQUENTIAL_MACHINE_DIR || path.join(HOME_DIR, '.sequential-machine');
 const WORK_DIR = process.env.SEQUENTIAL_MACHINE_WORK || path.join(STATEKIT_DIR, 'work');
@@ -251,17 +254,21 @@ async function main() {
       }
     });
 
+    const baseUrl = `${PROTOCOL}://${HOSTNAME}:${PORT}`;
+    const wsProtocol = PROTOCOL === 'https' ? 'wss' : 'ws';
+    const wsBaseUrl = `${wsProtocol}://${HOSTNAME}:${PORT}`;
+
     const server = httpServer.listen(PORT, () => {
       console.log('\n✓ Sequential Desktop Server initialized\n');
       console.log('Access points:');
-      console.log(`  Desktop:        http://localhost:${PORT}`);
-      console.log(`  Apps API:       http://localhost:${PORT}/api/apps`);
-      console.log(`  Sequential-OS:  http://localhost:${PORT}/api/sequential-os/*`);
-      console.log(`  WebSocket:      ws://localhost:${PORT}/api/runs/subscribe`);
-      console.log(`  Zellous:        http://localhost:${PORT}/`);
+      console.log(`  Desktop:        ${baseUrl}`);
+      console.log(`  Apps API:       ${baseUrl}/api/apps`);
+      console.log(`  Sequential-OS:  ${baseUrl}/api/sequential-os/*`);
+      console.log(`  WebSocket:      ${wsBaseUrl}/api/runs/subscribe`);
+      console.log(`  Zellous:        ${baseUrl}/`);
       console.log('\nRegistered apps:');
       appRegistry.getManifests().forEach(manifest => {
-        console.log(`  ${manifest.icon} ${manifest.name}: http://localhost:${PORT}/apps/${manifest.id}/${manifest.entry}`);
+        console.log(`  ${manifest.icon} ${manifest.name}: ${baseUrl}/apps/${manifest.id}/${manifest.entry}`);
       });
       console.log('\nPress Ctrl+C to shutdown\n');
     });
