@@ -8,7 +8,9 @@ import { CONFIG } from '../config/defaults.js';
 import { logFileOperation, logFileSuccess, logBatchFileOperation, createDetailedErrorResponse } from '../utils/error-logger.js';
 import { writeFileAtomicString } from '../utils/file-ops.js';
 
-export function registerFileRoutes(app) {
+export function registerFileRoutes(app, container) {
+  if (!container) throw new Error('Container required for FileRoutes');
+  const fileRepository = container.resolve('FileRepository');
   app.get('/api/files/current-path', (req, res) => {
     res.json({ path: process.cwd() });
   });

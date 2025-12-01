@@ -138,10 +138,10 @@ async function main() {
     registerDebugRoutes(app);
     registerAppRoutes(app, appRegistry, __dirname);
     registerSequentialOsRoutes(app, kit, STATEKIT_DIR);
-    registerFileRoutes(app);
+    registerFileRoutes(app, container);
     registerTaskRoutes(app, container);
     registerFlowRoutes(app, container);
-    registerToolRoutes(app);
+    registerToolRoutes(app, container);
     registerRunsRoutes(app, () => getActiveTasks(container));
     registerStorageObserverRoutes(app);
 
