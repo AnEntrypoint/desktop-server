@@ -5,6 +5,7 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { createServerError, createForbiddenError } from '@sequential/error-handling';
+import { validator } from '@sequential/core-config';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -67,4 +68,15 @@ export async function initializeStateKit(StateKit, statekitDir, workDir) {
   console.log(`✓ StateKit initialized (${status.added.length + status.modified.length + status.deleted.length} uncommitted changes)`);
 
   return kit;
+}
+
+export function validateEnvironment() {
+  try {
+    validator.validate(process.env, true);
+    console.log('✓ Environment configuration validated');
+    return validator.getAll();
+  } catch (err) {
+    console.error('❌ Environment validation failed:', err.message);
+    process.exit(1);
+  }
 }

@@ -21,7 +21,7 @@ import { registerDebugRoutes } from './routes/debug.js';
 import { registerStorageObserverRoutes } from './routes/storage-observer.js';
 import { CONFIG } from '@sequential/server-utilities';
 import { setupDIContainer } from './utils/di-setup.js';
-import { ensureDirectories, loadStateKit, initializeStateKit } from './utils/initialization.js';
+import { ensureDirectories, loadStateKit, initializeStateKit, validateEnvironment } from './utils/initialization.js';
 import { setupHotReload, closeFileWatchers } from './utils/hot-reload.js';
 import { setupWebSocket } from './utils/websocket-setup.js';
 import { setupGracefulShutdown } from './utils/graceful-shutdown.js';
@@ -36,6 +36,8 @@ const PROTOCOL = CONFIG.server.protocol;
 async function main() {
   try {
     console.log('\n🚀 Starting Sequential Desktop Server...\n');
+
+    validateEnvironment();
 
     const dirConfig = {};
     const { STATEKIT_DIR, WORK_DIR } = await ensureDirectories(dirConfig);
