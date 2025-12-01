@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs-extra';
 import { validate } from '@sequential/param-validation';
-import { validateFileName } from '../lib/utils.js';
+import { validateFileName } from '@sequential/core';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { logFileOperation, logFileSuccess } from '@sequential/error-handling';
 import { broadcastFileEvent, validateAndResolvePath, startTiming, getDuration, handleFileError } from './file-operations-utils.js';

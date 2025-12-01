@@ -1,4 +1,4 @@
-import { validateFilePath } from '../lib/utils.js';
+import { validateFilePath } from '@sequential/core';
 import { createDetailedErrorResponse } from '@sequential/error-handling';
 import { broadcastToFileSubscribers } from '@sequential/websocket-broadcaster';
 
