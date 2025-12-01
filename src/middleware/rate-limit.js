@@ -58,17 +58,18 @@ export function checkWebSocketRateLimit(ip) {
   }
 
   const connections = wsConnectionMap.get(ip);
-  if (connections.length >= CONFIG.rateLimit.websocket.maxConnectionsPerIp) {
-    const oldestConnection = connections[0];
-    oldestConnection.ws.close(1008, 'Per-IP connection limit exceeded');
-    connections.shift();
-  }
 
   return {
     ip,
+    isAllowed: () => connections.length < CONFIG.rateLimit.websocket.maxConnectionsPerIp,
+    getRemainingConnections: () => Math.max(0, CONFIG.rateLimit.websocket.maxConnectionsPerIp - connections.length),
     add: (ws) => {
       const connections = wsConnectionMap.get(ip);
+      if (connections.length >= CONFIG.rateLimit.websocket.maxConnectionsPerIp) {
+        return false;
+      }
       connections.push({ ws, timestamp: Date.now() });
+      return true;
     },
     remove: (ws) => {
       const connections = wsConnectionMap.get(ip);
