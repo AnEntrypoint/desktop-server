@@ -7,15 +7,15 @@ import { readJsonFiles } from '@sequential/file-operations';
 
 async function getAllRuns(includeTaskName = true) {
   const tasksDir = path.join(process.cwd(), 'tasks');
-  if (!fs.existsSync(tasksDir)) {
+  if (!await fs.pathExists(tasksDir)) {
     return [];
   }
   const allRuns = [];
-  const tasks = fs.readdirSync(tasksDir)
-    .filter(f => fs.statSync(path.join(tasksDir, f)).isDirectory());
+  const entries = await fs.readdir(tasksDir, { withFileTypes: true });
+  const tasks = entries.filter(e => e.isDirectory()).map(e => e.name);
   for (const taskName of tasks) {
     const runsDir = path.join(tasksDir, taskName, 'runs');
-    if (fs.existsSync(runsDir)) {
+    if (await fs.pathExists(runsDir)) {
       const results = await readJsonFiles(runsDir);
       for (const { content } of results) {
         if (content) {
