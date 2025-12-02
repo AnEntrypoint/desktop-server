@@ -1,4 +1,4 @@
-export function setupGracefulShutdown(httpServer, wss, fileWatchers) {
+export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager) {
   const gracefulShutdown = (signal) => {
     console.log(`\n\n[${signal}] Shutting down gracefully...`);
 
@@ -15,7 +15,16 @@ export function setupGracefulShutdown(httpServer, wss, fileWatchers) {
       }
     });
 
-    httpServer.close(() => {
+    httpServer.close(async () => {
+      try {
+        if (stateManager) {
+          await stateManager.shutdown();
+          console.log('✓ StateManager shutdown complete');
+        }
+      } catch (e) {
+        console.error('Error shutting down StateManager:', e.message);
+      }
+
       clearTimeout(shutdownTimeout);
       console.log('✓ HTTP server closed');
       process.exit(0);

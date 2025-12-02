@@ -27,6 +27,8 @@
     "@sequential/error-handling": "*",
     "@sequential/param-validation": "*",
     "@sequential/file-operations": "*",
+    "@sequential/persistent-state": "*",
+    "@sequential/sequential-os-http": "*",
     "@sequential/websocket-broadcaster": "*",
     "@sequential/server-utilities": "*",
     "express": "^4.18.2",
