@@ -32,10 +32,6 @@ export function registerDebugRoutes(app, container) {
   app.get('/api/state/stats', asyncHandler((req, res) => {
     const stateManager = container.resolve('StateManager');
     const stats = stateManager.getCacheStats();
-    res.json({
-      cache: stats,
-      timestamp: new Date().toISOString(),
-      message: 'StateManager cache statistics'
-    });
+    res.json(stats);
   }));
 }

@@ -1,8 +1,9 @@
-import { validateTaskName, sanitizeInput } from '@sequential/core';
-import { createError, createValidationError, createErrorResponse } from '@sequential/error-handling';
-import { validateParam } from '@sequential/param-validation';
+import { validateTaskName } from '@sequential/core';
+import { createValidationError } from '@sequential/error-handling';
+import { validateParam, sanitizeInput } from '@sequential/param-validation';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '@sequential/websocket-broadcaster';
+import { formatResponse, formatError } from '@sequential/response-formatting';
 
 export function registerTaskRoutes(app, container) {
   const repository = container.resolve('TaskRepository');
@@ -11,7 +12,7 @@ export function registerTaskRoutes(app, container) {
 
   app.get('/api/tasks', asyncHandler(async (req, res) => {
     const tasks = await repository.getAll();
-    res.json(tasks);
+    res.json(formatResponse({ tasks }));
   }));
 
   app.post('/api/tasks/:taskName/run', asyncHandler(async (req, res) => {
@@ -61,27 +62,27 @@ export function registerTaskRoutes(app, container) {
     broadcastTaskProgress(taskName, runId, { stage: status === 'success' ? 'completed' : status, percentage: 100, details: `Task ${status === 'success' ? 'completed' : status} in ${duration}ms` });
     broadcastToRunSubscribers({ type: 'run-completed', runId, taskName, status, duration, timestamp: result.timestamp });
     broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });
-    res.json(result);
+    res.json(formatResponse({ result }));
   }));
 
   app.post('/api/tasks/:runId/cancel', asyncHandler(async (req, res) => {
     const { runId } = req.params;
     const task = service.getActiveTask(runId);
     if (!task) {
-      return res.status(404).json(createErrorResponse('TASK_NOT_FOUND', 'Task not running or already completed'));
+      return res.status(404).json(formatError(404, { code: 'TASK_NOT_FOUND', message: 'Task not running or already completed' }));
     }
     task.cancel();
     service.unregisterActiveTask(runId);
     logOperation('task-cancelled', { runId, taskName: task.taskName });
     broadcastToRunSubscribers({ type: 'run-cancelled', runId, taskName: task.taskName, timestamp: new Date().toISOString() });
-    res.json({ success: true, runId, cancelled: true, message: `Task ${runId} cancelled` });
+    res.json(formatResponse({ success: true, runId, cancelled: true, message: `Task ${runId} cancelled` }));
   }));
 
   app.get('/api/tasks/:taskName/history', asyncHandler(async (req, res) => {
     const { taskName } = req.params;
     validateParam(validateTaskName, 'taskName')(taskName);
     const runs = repository.getRuns(taskName);
-    res.json(runs);
+    res.json(formatResponse({ runs }));
   }));
 
   app.get('/api/tasks/:taskName/runs/:runId', asyncHandler(async (req, res) => {
@@ -91,7 +92,7 @@ export function registerTaskRoutes(app, container) {
       throw createValidationError('Invalid run ID format', 'runId');
     }
     const run = repository.getRun(taskName, runId);
-    res.json(run);
+    res.json(formatResponse({ run }));
   }));
 }
 
