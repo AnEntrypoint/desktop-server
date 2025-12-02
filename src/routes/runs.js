@@ -2,8 +2,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { createError } from '@sequential/error-handling';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { getCacheEntry, setCacheEntry } from '@sequential/server-utilities';
-import { readJsonFiles } from '@sequential/file-operations';
+import { createCacheKey, getFromCache, setCache } from '@sequential/server-utilities';
 
 async function getAllRuns(includeTaskName = true) {
   const tasksDir = path.join(process.cwd(), 'tasks');
@@ -16,11 +15,18 @@ async function getAllRuns(includeTaskName = true) {
   for (const taskName of tasks) {
     const runsDir = path.join(tasksDir, taskName, 'runs');
     if (await fs.pathExists(runsDir)) {
-      const results = await readJsonFiles(runsDir);
-      for (const { content } of results) {
-        if (content) {
-          const run = includeTaskName ? { ...content, taskName } : content;
-          allRuns.push(run);
+      const files = await fs.readdir(runsDir);
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          try {
+            const content = await fs.readJson(path.join(runsDir, file));
+            if (content) {
+              const run = includeTaskName ? { ...content, taskName } : content;
+              allRuns.push(run);
+            }
+          } catch (e) {
+            // Skip files that can't be parsed
+          }
         }
       }
     }

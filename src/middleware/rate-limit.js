@@ -1,4 +1,4 @@
-import { createErrorResponse } from '@sequential/response-formatting';
+import { createErrorResponse } from '@sequential/error-handling';
 import { CONFIG } from '@sequential/server-utilities';
 
 const RATE_LIMIT_MAP = new Map();
