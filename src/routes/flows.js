@@ -1,8 +1,9 @@
-import { validateTaskName, sanitizeInput } from '@sequential/core';
+import { validateTaskName } from '@sequential/core';
 import { createError, createValidationError } from '@sequential/error-handling';
-import { validateParam } from '@sequential/param-validation';
+import { validateParam, sanitizeInput } from '@sequential/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { executeTaskWithTimeout } from '@sequential/server-utilities';
+import { executeTaskWithTimeout, backgroundTaskManager } from '@sequential/server-utilities';
+import { formatResponse, formatError } from '@sequential/response-formatting';
 
 export function registerFlowRoutes(app, container) {
   const repository = container.resolve('FlowRepository');
@@ -11,14 +12,14 @@ export function registerFlowRoutes(app, container) {
 
   app.get('/api/flows', asyncHandler(async (req, res) => {
     const flows = await repository.getAll();
-    res.json(flows);
+    res.json(formatResponse(flows));
   }));
 
   app.get('/api/flows/:flowId', asyncHandler(async (req, res) => {
     const { flowId } = req.params;
     validateParam(validateTaskName, 'flowId')(flowId);
     const flow = await repository.get(flowId);
-    res.json(flow);
+    res.json(formatResponse(flow));
   }));
 
   app.post('/api/flows', asyncHandler(async (req, res) => {
@@ -60,6 +61,7 @@ export function registerFlowRoutes(app, container) {
           handlerType: state.handlerType,
           taskName: state.taskName,
           taskInput: state.taskInput,
+          timeout: state.timeout || undefined,
           code: state.code,
           onDone: state.onDone || undefined,
           onError: state.onError || undefined
@@ -73,7 +75,7 @@ export function registerFlowRoutes(app, container) {
 
     const config = { name: sanitizedName, runner: 'flow', inputs: [] };
     await repository.save(id, graph, config);
-    res.json({ success: true, id, message: 'Flow saved' });
+    res.json(formatResponse({ success: true, id, message: 'Flow saved' }));
   }));
 
   app.post('/api/flows/run', asyncHandler(async (req, res) => {
@@ -100,7 +102,21 @@ export function registerFlowRoutes(app, container) {
     while (currentState && currentState.type !== 'final') {
       executionLog.push(`Executing state: ${currentState.id}`);
       try {
-        if (currentState.handlerType === 'task' && currentState.taskName) {
+        if (currentState.handlerType === 'background-task' && currentState.taskName) {
+          const { id: bgTaskId } = backgroundTaskManager.spawn(currentState.taskName, [], {});
+          const timeout = currentState.timeout || 30000;
+          const bgResult = await Promise.race([
+            backgroundTaskManager.waitFor(bgTaskId),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(`Background task timeout after ${timeout}ms`)), timeout)
+            )
+          ]);
+          result = { taskId: bgTaskId, status: bgResult.status, duration: bgResult.duration };
+          if (bgResult.status !== 'completed') {
+            throw new Error(`Background task failed: ${bgResult.error || bgResult.status}`);
+          }
+          executionLog.push(`Background task completed: ${bgTaskId}`);
+        } else if (currentState.handlerType === 'task' && currentState.taskName) {
           const task = await taskRepository.get(currentState.taskName);
           if (!task) {
             throw new Error(`Task not found: ${currentState.taskName}`);
@@ -132,15 +148,14 @@ export function registerFlowRoutes(app, container) {
 
     const duration = Date.now() - startTime;
     if (error) {
-      res.json({ success: false, error, duration, executionLog });
+      res.status(500).json(formatError(500, { code: 'FLOW_EXECUTION_FAILED', message: error, duration, executionLog }));
     } else {
-      res.json({
-        success: true,
+      res.json(formatResponse({
         duration,
         finalState: currentState?.id || 'unknown',
         result,
         executionLog
-      });
+      }));
     }
   }));
 }
