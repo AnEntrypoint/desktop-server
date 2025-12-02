@@ -28,6 +28,8 @@ import { setupHotReload, closeFileWatchers } from './utils/hot-reload.js';
 import { setupWebSocket } from './utils/websocket-setup.js';
 import { setupGracefulShutdown } from './utils/graceful-shutdown.js';
 import { StateManager, FileSystemAdapter } from '@sequential/persistent-state';
+import { backgroundTaskManager } from '@sequential/server-utilities';
+import { broadcastBackgroundTaskEvent } from '@sequential/websocket-broadcaster';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -121,6 +123,50 @@ async function main() {
     const httpServer = http.createServer(app);
     const { wss } = setupWebSocket(httpServer, () => getActiveTasks(container));
 
+    backgroundTaskManager.on('task:start', (taskData) => {
+      broadcastBackgroundTaskEvent({
+        type: 'task:start',
+        data: taskData,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    backgroundTaskManager.on('task:complete', (status) => {
+      broadcastBackgroundTaskEvent({
+        type: 'task:complete',
+        status,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    backgroundTaskManager.on('task:failed', (status) => {
+      broadcastBackgroundTaskEvent({
+        type: 'task:failed',
+        status,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    backgroundTaskManager.on('task:killed', (taskData) => {
+      broadcastBackgroundTaskEvent({
+        type: 'task:killed',
+        data: taskData,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    backgroundTaskManager.on('task:progress', ({ id, progress }) => {
+      broadcastBackgroundTaskEvent({
+        type: 'task:progress',
+        id,
+        progress,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    const stateManager = container.resolve('StateManager');
+    backgroundTaskManager.setStateManager(stateManager);
+
     const { fileWatchers } = setupHotReload(app, appRegistry, __dirname);
 
     const baseUrl = `${PROTOCOL}://${HOSTNAME}:${PORT}`;
@@ -142,7 +188,6 @@ async function main() {
       console.log('\nPress Ctrl+C to shutdown\n');
     });
 
-    const stateManager = container.resolve('StateManager');
     setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager);
 
     return new Promise(() => {});
