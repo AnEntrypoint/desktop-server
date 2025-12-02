@@ -1,0 +1,15 @@
+{
+  "id": "new-tool",
+  "name": "new-tool",
+  "description": "",
+  "category": "custom",
+  "implementation": "async function executeTool(params) {\n  // Implementation\n  return { success: true };\n}",
+  "parameters": [],
+  "imports": {
+    "npm": [],
+    "cdn": [],
+    "esModules": "",
+    "importMap": null
+  },
+  "timestamp": "2025-12-02T10:30:21.743Z"
+}
