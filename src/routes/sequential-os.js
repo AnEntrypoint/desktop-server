@@ -1,14 +1,7 @@
 import path from 'path';
 import fs from 'fs-extra';
-import { createError, ERROR_CODES } from '@sequential/error-handling';
-import { formatError } from '@sequential/response-formatting';
+import { createErrorResponse } from '@sequential/error-handling';
 import { asyncHandler } from '../middleware/error-handler.js';
-
-function createErrorResponse(code, message) {
-  const errorDef = ERROR_CODES[code] || ERROR_CODES.BAD_REQUEST;
-  const error = createError(errorDef, message);
-  return formatError(error.httpCode, error);
-}
 
 export function registerSequentialOsRoutes(app, kit, STATEKIT_DIR) {
   app.get('/api/sequential-os/status', asyncHandler(async (req, res) => {

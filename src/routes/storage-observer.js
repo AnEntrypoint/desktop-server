@@ -1,13 +1,5 @@
 import { asyncHandler } from '../middleware/error-handler.js';
-import { createError } from '@sequential/error-handling';
-import { formatError } from '@sequential/response-formatting';
-
-function createErrorResponse(code, message) {
-  const { ERROR_CODES } = require('@sequential/error-handling');
-  const errorDef = ERROR_CODES[code] || ERROR_CODES.BAD_REQUEST;
-  const error = createError(errorDef, message);
-  return formatError(error.httpCode, error);
-}
+import { createErrorResponse } from '@sequential/error-handling';
 
 export function registerStorageObserverRoutes(app, container) {
   app.get('/api/storage/status', asyncHandler(async (req, res) => {
