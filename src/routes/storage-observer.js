@@ -1,5 +1,5 @@
 import { asyncHandler } from '../middleware/error-handler.js';
-import { createErrorResponse } from '@sequential/error-handling';
+import { formatResponse, formatError } from '@sequential/response-formatting';
 
 export function registerStorageObserverRoutes(app, container) {
   app.get('/api/storage/status', asyncHandler(async (req, res) => {
@@ -21,13 +21,13 @@ export function registerStorageObserverRoutes(app, container) {
       cache: stats,
       memoryUsage: process.memoryUsage()
     };
-    res.json(status);
+    res.json(formatResponse({ status }));
   }));
 
   app.get('/api/storage/runs', asyncHandler(async (req, res) => {
     const stateManager = container.resolve('StateManager');
     const runs = await stateManager.getAll('runs');
-    res.json({ runs, count: runs.length });
+    res.json(formatResponse({ runs, count: runs.length }));
   }));
 
   app.get('/api/storage/runs/:runId', asyncHandler(async (req, res) => {
@@ -35,33 +35,33 @@ export function registerStorageObserverRoutes(app, container) {
     const { runId } = req.params;
     const run = await stateManager.get('runs', runId);
     if (!run) {
-      return res.status(404).json(createErrorResponse('RUN_NOT_FOUND', 'Run not found in storage'));
+      return res.status(404).json(formatError(404, { code: 'RUN_NOT_FOUND', message: 'Run not found in storage' }));
     }
-    res.json(run);
+    res.json(formatResponse({ run }));
   }));
 
   app.get('/api/storage/tasks', asyncHandler(async (req, res) => {
     const stateManager = container.resolve('StateManager');
     const tasks = await stateManager.getAll('tasks');
-    res.json({ tasks, count: tasks.length });
+    res.json(formatResponse({ tasks, count: tasks.length }));
   }));
 
   app.get('/api/storage/flows', asyncHandler(async (req, res) => {
     const stateManager = container.resolve('StateManager');
     const flows = await stateManager.getAll('flows');
-    res.json({ flows, count: flows.length });
+    res.json(formatResponse({ flows, count: flows.length }));
   }));
 
   app.get('/api/storage/tools', asyncHandler(async (req, res) => {
     const stateManager = container.resolve('StateManager');
     const tools = await stateManager.getAll('tools');
-    res.json({ tools, count: tools.length });
+    res.json(formatResponse({ tools, count: tools.length }));
   }));
 
   app.get('/api/storage/app-state', asyncHandler(async (req, res) => {
     const stateManager = container.resolve('StateManager');
     const appState = await stateManager.getAll('appState');
-    res.json({ appState, count: appState.length });
+    res.json(formatResponse({ appState, count: appState.length }));
   }));
 
   app.get('/api/storage/export', asyncHandler(async (req, res) => {
@@ -78,7 +78,7 @@ export function registerStorageObserverRoutes(app, container) {
     const filename = `storage-export-${Date.now()}.json`;
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
-    res.json(exported);
+    res.json(formatResponse({ exported }));
   }));
 }
 
