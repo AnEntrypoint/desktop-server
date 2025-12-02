@@ -1,15 +1,16 @@
-import { validateTaskName, sanitizeInput } from '@sequential/core';
+import { validateTaskName } from '@sequential/core';
 import { createError, createValidationError } from '@sequential/error-handling';
-import { validateParam, validateRequired, validateType } from '@sequential/param-validation';
+import { validateParam, validateRequired, validateType, sanitizeInput } from '@sequential/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { executeTaskWithTimeout } from '@sequential/server-utilities';
+import { formatResponse, formatError } from '@sequential/response-formatting';
 
 export function registerToolRoutes(app, container) {
   const repository = container.resolve('ToolRepository');
 
   app.get('/api/tools', asyncHandler(async (req, res) => {
     const tools = await repository.getAll();
-    res.json(tools);
+    res.json(formatResponse(tools));
   }));
 
   app.post('/api/tools', asyncHandler(async (req, res) => {
@@ -25,7 +26,7 @@ export function registerToolRoutes(app, container) {
 
     const tool = { id: name, name: sanitizeInput(name), ...(definition || {}), timestamp: new Date().toISOString() };
     await repository.save(name, tool);
-    res.json(tool);
+    res.json(formatResponse(tool));
   }));
 
   app.put('/api/tools/:id', asyncHandler(async (req, res) => {
@@ -42,7 +43,7 @@ export function registerToolRoutes(app, container) {
 
     const tool = { id, ...(definition || {}), timestamp: new Date().toISOString() };
     await repository.save(id, tool);
-    res.json(tool);
+    res.json(formatResponse(tool));
   }));
 
   app.delete('/api/tools/:id', asyncHandler(async (req, res) => {
@@ -53,7 +54,7 @@ export function registerToolRoutes(app, container) {
     validateParam(validateTaskName, 'id')(id);
 
     await repository.delete(id);
-    res.json({ success: true, id });
+    res.json(formatResponse({ success: true, id }));
   }));
 
   app.post('/api/tools/test', asyncHandler(async (req, res) => {
@@ -68,10 +69,10 @@ export function registerToolRoutes(app, container) {
     try {
       const result = await executeTaskWithTimeout(toolName, implementation, input || {}, 30000);
       const duration = Date.now() - startTime;
-      res.json({ success: true, output: result, duration });
+      res.json(formatResponse({ output: result, duration }));
     } catch (error) {
       const duration = Date.now() - startTime;
-      res.json({ success: false, error: error.message, stack: error.stack, duration });
+      res.status(500).json(formatError(500, { code: 'TOOL_TEST_FAILED', message: error.message, stack: error.stack, duration }));
     }
   }));
 
@@ -96,11 +97,11 @@ export function registerToolRoutes(app, container) {
       }
     }
 
-    res.json({
+    res.json(formatResponse({
       valid: invalid.length === 0,
       validated: packages.length,
       invalid,
       warning: invalid.length > 0 ? `These packages may not be available in the execution environment: ${invalid.join(', ')}` : null
-    });
+    }));
   }));
 }
