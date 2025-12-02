@@ -6,6 +6,7 @@ import { logFileOperation, logFileSuccess, createServerError } from '@sequential
 import { writeFileAtomicString } from '@sequential/file-operations';
 import { validate } from '@sequential/param-validation';
 import { validateFileName } from '@sequential/core';
+import { formatResponse, formatError } from '@sequential/response-formatting';
 
 function validateAndResolvePath(filePath) {
   if (!filePath) throw createServerError('File path required');
@@ -26,8 +27,10 @@ function getDuration(startTime) {
 
 function handleFileError(operation, filePath, error, res) {
   const statusCode = error.httpCode || 500;
-  const message = error.message || `File ${operation} failed`;
-  res.status(statusCode).json({ error: { code: error.code || 'FILE_OPERATION_FAILED', message } });
+  res.status(statusCode).json(formatError(statusCode, {
+    code: error.code || 'FILE_OPERATION_FAILED',
+    message: error.message || `File ${operation} failed`
+  }));
 }
 
 function broadcastFileEvent(eventType, filePath, metadata = {}) {
@@ -41,7 +44,7 @@ export function registerFileRoutes(app, container) {
 
   // READ OPERATIONS
   app.get('/api/files/current-path', (req, res) => {
-    res.json({ path: process.cwd() });
+    res.json(formatResponse({ path: process.cwd() }));
   });
 
   app.get('/api/files/list', asyncHandler(async (req, res) => {
@@ -59,7 +62,7 @@ export function registerFileRoutes(app, container) {
         isDirectory: file.isDirectory()
       };
     }));
-    res.json({ directory: realPath, files: items.sort((a, b) => a.name.localeCompare(b.name)) });
+    res.json(formatResponse({ directory: realPath, files: items.sort((a, b) => a.name.localeCompare(b.name)) }));
   }));
 
   app.get('/api/files/read', asyncHandler(async (req, res) => {
@@ -69,19 +72,19 @@ export function registerFileRoutes(app, container) {
       const realPath = validateAndResolvePath(filePath);
       const stat = await fs.stat(realPath);
       if (stat.isDirectory()) {
-        return res.status(400).json({ error: { code: 'INVALID_OPERATION', message: 'Cannot read directory' } });
+        return res.status(400).json(formatError(400, { code: 'INVALID_OPERATION', message: 'Cannot read directory' }));
       }
       if (stat.size > CONFIG.files.maxSizeBytes) {
         const maxMb = Math.round(CONFIG.files.maxSizeBytes / (1024 * 1024));
         const error = new Error(`File too large (max ${maxMb}MB)`);
         error.code = 'FILE_TOO_LARGE';
         logFileOperation('read', filePath, error, { size: stat.size, limit: CONFIG.files.maxSizeBytes });
-        return res.status(400).json({ error: { code: error.code, message: error.message } });
+        return res.status(400).json(formatError(400, { code: error.code, message: error.message }));
       }
       const content = await fs.readFile(realPath, 'utf8');
       const duration = getDuration(startTime);
       logFileSuccess('read', filePath, duration, { size: stat.size });
-      res.json({ path: realPath, size: stat.size, content, modified: stat.mtime });
+      res.json(formatResponse({ path: realPath, size: stat.size, content, modified: stat.mtime }));
     } catch (error) {
       const duration = getDuration(startTime);
       logFileOperation('read', filePath, error, { duration });
@@ -105,7 +108,7 @@ export function registerFileRoutes(app, container) {
       await writeFileAtomicString(realPath, content);
       const duration = getDuration(startTime);
       logFileSuccess('save', filePath, duration, { size: content.length });
-      res.json({ path: realPath, success: true });
+      res.json(formatResponse({ path: realPath, success: true }));
     } catch (error) {
       const duration = getDuration(startTime);
       logFileOperation('save', filePath, error, { duration, contentLength: content?.length || 0 });
@@ -130,7 +133,7 @@ export function registerFileRoutes(app, container) {
       const duration = getDuration(startTime);
       logFileSuccess('write', filePath, duration, { size: content.length, isNew });
       broadcastFileEvent(isNew ? 'file-created' : 'file-modified', filePath);
-      res.json({ path: realPath, size: content.length, success: true });
+      res.json(formatResponse({ path: realPath, size: content.length, success: true }));
     } catch (error) {
       const duration = getDuration(startTime);
       logFileOperation('write', filePath, error, { duration, contentLength: content?.length || 0 });
@@ -153,7 +156,7 @@ export function registerFileRoutes(app, container) {
       const duration = getDuration(startTime);
       logFileSuccess('mkdir', dirPath, duration);
       broadcastFileEvent('directory-created', dirPath);
-      res.json({ path: realPath, success: true });
+      res.json(formatResponse({ path: realPath, success: true }));
     } catch (error) {
       const duration = getDuration(startTime);
       logFileOperation('mkdir', dirPath, error, { duration });
@@ -176,7 +179,7 @@ export function registerFileRoutes(app, container) {
       const duration = getDuration(startTime);
       logFileSuccess('delete', filePath, duration);
       broadcastFileEvent('file-deleted', filePath);
-      res.json({ path: realPath, success: true });
+      res.json(formatResponse({ path: realPath, success: true }));
     } catch (error) {
       const duration = getDuration(startTime);
       logFileOperation('delete', filePath, error, { duration });
@@ -205,7 +208,7 @@ export function registerFileRoutes(app, container) {
       const newRelativePath = filePath.substring(0, filePath.lastIndexOf('/') + 1) + newName;
       logFileSuccess('rename', filePath, duration, { newName });
       broadcastFileEvent('file-renamed', filePath, { newPath: newRelativePath });
-      res.json({ oldPath: realPath, newPath: newPath, success: true });
+      res.json(formatResponse({ oldPath: realPath, newPath: newPath, success: true }));
     } catch (error) {
       const duration = getDuration(startTime);
       logFileOperation('rename', filePath, error, { duration, newName });
@@ -232,7 +235,7 @@ export function registerFileRoutes(app, container) {
       const duration = getDuration(startTime);
       logFileSuccess('copy', filePath, duration, { destination: destPath });
       broadcastFileEvent('file-copied', filePath, { destPath: destPath });
-      res.json({ sourcePath: realPath, destPath: realDest, success: true });
+      res.json(formatResponse({ sourcePath: realPath, destPath: realDest, success: true }));
     } catch (error) {
       const duration = getDuration(startTime);
       logFileOperation('copy', filePath, error, { duration, destination: destPath });
