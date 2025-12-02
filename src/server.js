@@ -20,6 +20,7 @@ import { registerRunsRoutes } from './routes/runs.js';
 import { registerAppRoutes } from './routes/apps.js';
 import { registerDebugRoutes } from './routes/debug.js';
 import { registerStorageObserverRoutes } from './routes/storage-observer.js';
+import { registerBackgroundTaskRoutes } from './routes/background-tasks.js';
 import { CONFIG } from '@sequential/server-utilities';
 import { setupDIContainer } from './utils/di-setup.js';
 import { ensureDirectories, loadStateKit, initializeStateKit, validateEnvironment } from './utils/initialization.js';
@@ -110,6 +111,7 @@ async function main() {
     registerToolRoutes(app, container);
     registerRunsRoutes(app, () => getActiveTasks(container));
     registerStorageObserverRoutes(app, container);
+    registerBackgroundTaskRoutes(app);
 
     app.use(express.static(path.join(__dirname, '../../desktop-shell/dist')));
     app.use(express.static(path.join(__dirname, '../../zellous')));
