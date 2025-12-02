@@ -2,6 +2,7 @@ import { validateTaskName, sanitizeInput } from '@sequential/core';
 import { createError, createValidationError } from '@sequential/error-handling';
 import { validateParam, validateRequired, validateType } from '@sequential/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { executeTaskWithTimeout } from '@sequential/server-utilities';
 
 export function registerToolRoutes(app, container) {
   const repository = container.resolve('ToolRepository');
@@ -53,5 +54,53 @@ export function registerToolRoutes(app, container) {
 
     await repository.delete(id);
     res.json({ success: true, id });
+  }));
+
+  app.post('/api/tools/test', asyncHandler(async (req, res) => {
+    const { toolName, implementation, input } = req.body;
+
+    validateRequired('toolName', toolName);
+    validateRequired('implementation', implementation);
+    validateType('toolName', toolName, 'string');
+    validateType('implementation', implementation, 'string');
+
+    const startTime = Date.now();
+    try {
+      const result = await executeTaskWithTimeout(toolName, implementation, input || {}, 30000);
+      const duration = Date.now() - startTime;
+      res.json({ success: true, output: result, duration });
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      res.json({ success: false, error: error.message, stack: error.stack, duration });
+    }
+  }));
+
+  app.post('/api/tools/validate-imports', asyncHandler(async (req, res) => {
+    const { packages } = req.body;
+
+    if (!Array.isArray(packages)) {
+      throw createValidationError('packages must be an array', 'packages');
+    }
+
+    const invalid = [];
+    const commonPackages = [
+      'axios', 'lodash', 'moment', 'date-fns', 'uuid', 'crypto-js',
+      'qs', 'dotenv', 'express', 'cors', 'multer', 'body-parser',
+      'jsonwebtoken', 'bcrypt', 'validator', 'joi', 'yup',
+      'node-fetch', 'xml2js', 'csv-parse', 'pdf-parse', 'cheerio'
+    ];
+
+    for (const pkg of packages) {
+      if (!commonPackages.includes(pkg.toLowerCase())) {
+        invalid.push(pkg);
+      }
+    }
+
+    res.json({
+      valid: invalid.length === 0,
+      validated: packages.length,
+      invalid,
+      warning: invalid.length > 0 ? `These packages may not be available in the execution environment: ${invalid.join(', ')}` : null
+    });
   }));
 }
