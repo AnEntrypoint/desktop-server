@@ -114,7 +114,7 @@ export function registerVfsRoutes(app, container) {
       return res.status(400).json({ error: { code: 'INVALID_SCOPE', message: 'Scope must be run, task, or global' } });
     }
 
-    if (!filePath || !content || typeof content !== 'string') {
+    if (!filePath || typeof content !== 'string') {
       return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'File path and content (string) required' } });
     }
 
