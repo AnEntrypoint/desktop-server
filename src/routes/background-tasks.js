@@ -103,4 +103,41 @@ export function registerBackgroundTaskRoutes(app) {
       status
     });
   }));
+
+  app.get('/api/background-tasks/history', asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit || '100'), 1000);
+    const history = await backgroundTaskManager.getHistory(limit);
+
+    res.json({
+      success: true,
+      history,
+      count: history.length
+    });
+  }));
+
+  app.post('/api/background-tasks/:id/progress', asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { percent, stage, details } = req.body;
+    const taskId = parseInt(id);
+
+    if (percent === undefined) {
+      return res.status(400).json({
+        error: { code: 'MISSING_PERCENT', message: 'percent is required' }
+      });
+    }
+
+    const success = backgroundTaskManager.updateProgress(taskId, percent, stage, details);
+
+    if (!success) {
+      return res.status(404).json({
+        error: { code: 'NOT_FOUND', message: `Task ${id} not found` }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Task ${id} progress updated to ${percent}%`,
+      progress: backgroundTaskManager.status(taskId).progress
+    });
+  }));
 }
