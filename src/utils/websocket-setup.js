@@ -1,7 +1,8 @@
 import { WebSocketServer } from 'ws';
 import { createWebSocketRateLimiter, checkWebSocketRateLimit } from '../middleware/rate-limit.js';
 import { createSubscriptionHandler } from '@sequential/websocket-factory';
-import { addRunSubscriber, removeRunSubscriber, addTaskSubscriber, removeTaskSubscriber, addFileSubscriber, removeFileSubscriber } from '@sequential/websocket-broadcaster';
+import { addRunSubscriber, removeRunSubscriber, addTaskSubscriber, removeTaskSubscriber, addFileSubscriber, removeFileSubscriber, addBackgroundTaskSubscriber, removeBackgroundTaskSubscriber } from '@sequential/websocket-broadcaster';
+import { backgroundTaskManager } from '@sequential/server-utilities';
 
 export function setupWebSocket(httpServer, getActiveTasks) {
   const wss = new WebSocketServer({ noServer: true });
@@ -38,6 +39,18 @@ export function setupWebSocket(httpServer, getActiveTasks) {
         message: 'File subscription established'
       }),
       contextLabel: 'files'
+    }),
+    createSubscriptionHandler({
+      urlPattern: '/api/background-tasks/subscribe',
+      paramExtractor: () => `bg-task-${Date.now()}`,
+      onSubscribe: (id, ws) => addBackgroundTaskSubscriber(id, ws),
+      onUnsubscribe: (id, ws) => removeBackgroundTaskSubscriber(id),
+      getInitialMessage: (id) => ({
+        type: 'connected',
+        message: 'Background task subscription established',
+        activeTasks: backgroundTaskManager.list()
+      }),
+      contextLabel: 'background-tasks'
     })
   ];
 
