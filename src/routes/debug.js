@@ -1,8 +1,6 @@
 import { asyncHandler, getOperationLog } from '../middleware/error-handler.js';
-import { createRequestLogger } from '@sequential/server-utilities';
+import { getFromCache, getRequestLog, CONFIG } from '@sequential/server-utilities';
 import { createError } from '@sequential/error-handling';
-import { getCacheEntry } from '@sequential/server-utilities';
-import { CONFIG } from '@sequential/server-utilities';
 
 export function registerDebugRoutes(app) {
   app.get('/api/logs', asyncHandler((req, res) => {

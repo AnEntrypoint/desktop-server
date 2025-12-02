@@ -3,7 +3,6 @@ import { createError, createValidationError, createErrorResponse } from '@sequen
 import { validateParam } from '@sequential/param-validation';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '@sequential/websocket-broadcaster';
-import { clearCache } from '@sequential/server-utilities';
 
 export function registerTaskRoutes(app, container) {
   const repository = container.resolve('TaskRepository');
