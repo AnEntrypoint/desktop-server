@@ -10,20 +10,22 @@ export function setupDIContainer() {
 
   const ecosystemPath = process.env.ECOSYSTEM_PATH || path.join(os.homedir(), 'sequential-ecosystem');
   const tasksDir = path.join(ecosystemPath, 'tasks');
+  const flowsDir = path.join(ecosystemPath, 'flows');
+  const toolsDir = path.join(ecosystemPath, 'tools');
 
   container.register('TaskRepository', () => new TaskRepository(tasksDir), { singleton: true });
 
-  container.register('FlowRepository', () => new FlowRepository(), { singleton: true });
+  container.register('FlowRepository', () => new FlowRepository(flowsDir), { singleton: true });
 
-  container.register('ToolRepository', () => new ToolRepository(), { singleton: true });
+  container.register('ToolRepository', () => new ToolRepository(toolsDir), { singleton: true });
 
   container.register('FileRepository', () => new FileRepository(), { singleton: true });
 
   container.register('TaskService',
-    (taskRepository) => new TaskService(taskRepository, { executionTimeoutMs: CONFIG.tasks.executionTimeoutMs }),
+    (taskRepository, toolRepository) => new TaskService(taskRepository, toolRepository, { executionTimeoutMs: CONFIG.tasks.executionTimeoutMs }),
     {
       singleton: true,
-      dependencies: ['TaskRepository']
+      dependencies: ['TaskRepository', 'ToolRepository']
     }
   );
 

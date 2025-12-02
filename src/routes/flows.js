@@ -7,6 +7,7 @@ import { executeTaskWithTimeout } from '@sequential/server-utilities';
 export function registerFlowRoutes(app, container) {
   const repository = container.resolve('FlowRepository');
   const taskRepository = container.resolve('TaskRepository');
+  const taskService = container.resolve('TaskService');
 
   app.get('/api/flows', asyncHandler(async (req, res) => {
     const flows = await repository.getAll();
@@ -56,6 +57,10 @@ export function registerFlowRoutes(app, container) {
       states: (states || []).reduce((acc, state) => {
         acc[state.id] = {
           type: state.type === 'final' ? 'final' : undefined,
+          handlerType: state.handlerType,
+          taskName: state.taskName,
+          taskInput: state.taskInput,
+          code: state.code,
           onDone: state.onDone || undefined,
           onError: state.onError || undefined
         };
@@ -78,7 +83,12 @@ export function registerFlowRoutes(app, container) {
     }
 
     const startTime = Date.now();
-    let currentState = flow.states.find(s => s.type === 'initial');
+
+    const statesArray = Array.isArray(flow.states)
+      ? flow.states
+      : Object.entries(flow.states).map(([id, state]) => ({ id, ...state }));
+
+    let currentState = statesArray.find(s => s.type === 'initial' || s.id === flow.initial);
     if (!currentState) {
       throw createValidationError('flow must have an initial state', 'flow');
     }
@@ -96,7 +106,8 @@ export function registerFlowRoutes(app, container) {
             throw new Error(`Task not found: ${currentState.taskName}`);
           }
           const taskInput = currentState.taskInput ? JSON.parse(currentState.taskInput) : {};
-          result = await executeTaskWithTimeout(currentState.taskName, task.code, taskInput, 30000);
+          const runId = taskService.createRunId();
+          result = await taskService.executeTask(runId, currentState.taskName, task.code, taskInput);
           executionLog.push(`Task output: ${JSON.stringify(result)}`);
         } else if (currentState.code) {
           const code = currentState.code;
@@ -105,13 +116,13 @@ export function registerFlowRoutes(app, container) {
         }
 
         const nextStateId = currentState.onDone;
-        currentState = flow.states.find(s => s.id === nextStateId);
+        currentState = statesArray.find(s => s.id === nextStateId);
       } catch (err) {
         error = err.message;
         executionLog.push(`Error: ${err.message}`);
         const fallbackStateId = currentState.onError;
         if (fallbackStateId) {
-          currentState = flow.states.find(s => s.id === fallbackStateId);
+          currentState = statesArray.find(s => s.id === fallbackStateId);
           error = null;
         } else {
           break;

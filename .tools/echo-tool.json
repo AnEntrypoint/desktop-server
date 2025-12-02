@@ -1,0 +1,7 @@
+{
+  "id": "echo-tool",
+  "name": "echo-tool",
+  "implementation": "async (input) => { return { echoed: input, timestamp: new Date().toISOString() }; }",
+  "description": "Simple echo tool for testing",
+  "timestamp": "2025-12-02T14:06:16.598Z"
+}

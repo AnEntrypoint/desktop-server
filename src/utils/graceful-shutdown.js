@@ -1,3 +1,5 @@
+import { backgroundTaskManager } from '@sequential/server-utilities';
+
 export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager) {
   const gracefulShutdown = (signal) => {
     console.log(`\n\n[${signal}] Shutting down gracefully...`);
@@ -14,6 +16,13 @@ export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManage
         console.error('Error closing file watcher:', e.message);
       }
     });
+
+    try {
+      backgroundTaskManager.cleanup();
+      console.log('✓ Background tasks cleaned up');
+    } catch (e) {
+      console.error('Error cleaning up background tasks:', e.message);
+    }
 
     httpServer.close(async () => {
       try {
