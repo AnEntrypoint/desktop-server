@@ -2,9 +2,11 @@ import { validateTaskName, sanitizeInput } from '@sequential/core';
 import { createError, createValidationError } from '@sequential/error-handling';
 import { validateParam } from '@sequential/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { executeTaskWithTimeout } from '@sequential/server-utilities';
 
 export function registerFlowRoutes(app, container) {
   const repository = container.resolve('FlowRepository');
+  const taskRepository = container.resolve('TaskRepository');
 
   app.get('/api/flows', asyncHandler(async (req, res) => {
     const flows = await repository.getAll();
@@ -67,5 +69,67 @@ export function registerFlowRoutes(app, container) {
     const config = { name: sanitizedName, runner: 'flow', inputs: [] };
     await repository.save(id, graph, config);
     res.json({ success: true, id, message: 'Flow saved' });
+  }));
+
+  app.post('/api/flows/run', asyncHandler(async (req, res) => {
+    const { flowId, flow, input } = req.body;
+    if (!flow || !flow.states) {
+      throw createValidationError('flow with states is required', 'flow');
+    }
+
+    const startTime = Date.now();
+    let currentState = flow.states.find(s => s.type === 'initial');
+    if (!currentState) {
+      throw createValidationError('flow must have an initial state', 'flow');
+    }
+
+    const executionLog = [];
+    let result = input || {};
+    let error = null;
+
+    while (currentState && currentState.type !== 'final') {
+      executionLog.push(`Executing state: ${currentState.id}`);
+      try {
+        if (currentState.handlerType === 'task' && currentState.taskName) {
+          const task = await taskRepository.get(currentState.taskName);
+          if (!task) {
+            throw new Error(`Task not found: ${currentState.taskName}`);
+          }
+          const taskInput = currentState.taskInput ? JSON.parse(currentState.taskInput) : {};
+          result = await executeTaskWithTimeout(currentState.taskName, task.code, taskInput, 30000);
+          executionLog.push(`Task output: ${JSON.stringify(result)}`);
+        } else if (currentState.code) {
+          const code = currentState.code;
+          result = await executeTaskWithTimeout(currentState.id, code, result, 30000);
+          executionLog.push(`Code output: ${JSON.stringify(result)}`);
+        }
+
+        const nextStateId = currentState.onDone;
+        currentState = flow.states.find(s => s.id === nextStateId);
+      } catch (err) {
+        error = err.message;
+        executionLog.push(`Error: ${err.message}`);
+        const fallbackStateId = currentState.onError;
+        if (fallbackStateId) {
+          currentState = flow.states.find(s => s.id === fallbackStateId);
+          error = null;
+        } else {
+          break;
+        }
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    if (error) {
+      res.json({ success: false, error, duration, executionLog });
+    } else {
+      res.json({
+        success: true,
+        duration,
+        finalState: currentState?.id || 'unknown',
+        result,
+        executionLog
+      });
+    }
   }));
 }
