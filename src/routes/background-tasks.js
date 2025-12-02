@@ -1,38 +1,26 @@
 import { backgroundTaskManager } from '@sequential/server-utilities';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { formatResponse, formatError } from '@sequential/response-formatting';
 
 export function registerBackgroundTaskRoutes(app) {
   app.post('/api/background-tasks/spawn', asyncHandler(async (req, res) => {
     const { command, args = [], options = {} } = req.body;
 
     if (!command) {
-      return res.status(400).json({
-        error: { code: 'MISSING_COMMAND', message: 'command is required' }
-      });
+      return res.status(400).json(formatError(400, { code: 'MISSING_COMMAND', message: 'command is required' }));
     }
 
     try {
       const result = backgroundTaskManager.spawn(command, args, options);
-      res.json({
-        success: true,
-        id: result.id,
-        pid: result.pid,
-        message: `Task spawned: ${command}`
-      });
+      res.json(formatResponse({ id: result.id, pid: result.pid, message: `Task spawned: ${command}` }));
     } catch (error) {
-      res.status(500).json({
-        error: { code: 'SPAWN_FAILED', message: error.message }
-      });
+      res.status(500).json(formatError(500, { code: 'SPAWN_FAILED', message: error.message }));
     }
   }));
 
   app.get('/api/background-tasks/list', asyncHandler(async (req, res) => {
     const tasks = backgroundTaskManager.list();
-    res.json({
-      success: true,
-      tasks,
-      count: tasks.length
-    });
+    res.json(formatResponse({ tasks, count: tasks.length }));
   }));
 
   app.get('/api/background-tasks/:id/status', asyncHandler(async (req, res) => {
@@ -41,15 +29,10 @@ export function registerBackgroundTaskRoutes(app) {
     const status = backgroundTaskManager.status(taskId);
 
     if (!status) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: `Task ${id} not found` }
-      });
+      return res.status(404).json(formatError(404, { code: 'NOT_FOUND', message: `Task ${id} not found` }));
     }
 
-    res.json({
-      success: true,
-      status
-    });
+    res.json(formatResponse({ status }));
   }));
 
   app.get('/api/background-tasks/:id/output', asyncHandler(async (req, res) => {
@@ -58,16 +41,10 @@ export function registerBackgroundTaskRoutes(app) {
     const output = backgroundTaskManager.getOutput(taskId);
 
     if (!output) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: `Task ${id} not found` }
-      });
+      return res.status(404).json(formatError(404, { code: 'NOT_FOUND', message: `Task ${id} not found` }));
     }
 
-    res.json({
-      success: true,
-      stdout: output.stdout,
-      stderr: output.stderr
-    });
+    res.json(formatResponse({ stdout: output.stdout, stderr: output.stderr }));
   }));
 
   app.post('/api/background-tasks/:id/kill', asyncHandler(async (req, res) => {
@@ -76,15 +53,10 @@ export function registerBackgroundTaskRoutes(app) {
     const killed = backgroundTaskManager.kill(taskId);
 
     if (!killed) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: `Task ${id} not found or not running` }
-      });
+      return res.status(404).json(formatError(404, { code: 'NOT_FOUND', message: `Task ${id} not found or not running` }));
     }
 
-    res.json({
-      success: true,
-      message: `Task ${id} killed`
-    });
+    res.json(formatResponse({ message: `Task ${id} killed` }));
   }));
 
   app.post('/api/background-tasks/:id/wait', asyncHandler(async (req, res) => {
@@ -93,26 +65,17 @@ export function registerBackgroundTaskRoutes(app) {
     const status = await backgroundTaskManager.waitFor(taskId);
 
     if (!status) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: `Task ${id} not found` }
-      });
+      return res.status(404).json(formatError(404, { code: 'NOT_FOUND', message: `Task ${id} not found` }));
     }
 
-    res.json({
-      success: true,
-      status
-    });
+    res.json(formatResponse({ status }));
   }));
 
   app.get('/api/background-tasks/history', asyncHandler(async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || '100'), 1000);
     const history = await backgroundTaskManager.getHistory(limit);
 
-    res.json({
-      success: true,
-      history,
-      count: history.length
-    });
+    res.json(formatResponse({ history, count: history.length }));
   }));
 
   app.post('/api/background-tasks/:id/progress', asyncHandler(async (req, res) => {
@@ -121,23 +84,15 @@ export function registerBackgroundTaskRoutes(app) {
     const taskId = parseInt(id);
 
     if (percent === undefined) {
-      return res.status(400).json({
-        error: { code: 'MISSING_PERCENT', message: 'percent is required' }
-      });
+      return res.status(400).json(formatError(400, { code: 'MISSING_PERCENT', message: 'percent is required' }));
     }
 
     const success = backgroundTaskManager.updateProgress(taskId, percent, stage, details);
 
     if (!success) {
-      return res.status(404).json({
-        error: { code: 'NOT_FOUND', message: `Task ${id} not found` }
-      });
+      return res.status(404).json(formatError(404, { code: 'NOT_FOUND', message: `Task ${id} not found` }));
     }
 
-    res.json({
-      success: true,
-      message: `Task ${id} progress updated to ${percent}%`,
-      progress: backgroundTaskManager.status(taskId).progress
-    });
+    res.json(formatResponse({ message: `Task ${id} progress updated to ${percent}%`, progress: backgroundTaskManager.status(taskId).progress }));
   }));
 }
