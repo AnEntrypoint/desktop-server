@@ -7,6 +7,7 @@ import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskPro
 export function registerTaskRoutes(app, container) {
   const repository = container.resolve('TaskRepository');
   const service = container.resolve('TaskService');
+  const stateManager = container.resolve('StateManager');
 
   app.get('/api/tasks', asyncHandler(async (req, res) => {
     const tasks = repository.getAll();
@@ -54,6 +55,7 @@ export function registerTaskRoutes(app, container) {
     service.validateMetadata(result);
 
     await repository.saveRun(taskName, runId, result);
+    await stateManager.set('runs', runId, { ...result, taskName });
     service.unregisterActiveTask(runId);
     logOperation('task-completed', { runId, taskName, status, duration });
     broadcastTaskProgress(taskName, runId, { stage: status === 'success' ? 'completed' : status, percentage: 100, details: `Task ${status === 'success' ? 'completed' : status} in ${duration}ms` });
