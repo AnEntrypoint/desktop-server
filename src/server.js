@@ -25,6 +25,7 @@ import { ensureDirectories, loadStateKit, initializeStateKit, validateEnvironmen
 import { setupHotReload, closeFileWatchers } from './utils/hot-reload.js';
 import { setupWebSocket } from './utils/websocket-setup.js';
 import { setupGracefulShutdown } from './utils/graceful-shutdown.js';
+import { StateManager, FileSystemAdapter } from '@sequential/persistent-state';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,6 +65,15 @@ async function main() {
 
     const container = setupDIContainer();
 
+    const stateDir = path.join(WORK_DIR, '.state');
+    const stateAdapter = new FileSystemAdapter(stateDir);
+    const stateManager = new StateManager(stateAdapter, {
+      maxCacheSize: parseInt(process.env.STATE_CACHE_SIZE || '5000'),
+      cacheTTL: parseInt(process.env.STATE_TTL_MS || '600000'),
+      cleanupInterval: parseInt(process.env.STATE_CLEANUP_INTERVAL_MS || '60000')
+    });
+    container.register('StateManager', stateManager);
+
     const app = express();
     app.use(express.json({ limit: '50mb' }));
     app.use(securityHeaders);
@@ -96,7 +106,7 @@ async function main() {
     registerFlowRoutes(app, container);
     registerToolRoutes(app, container);
     registerRunsRoutes(app, () => getActiveTasks(container));
-    registerStorageObserverRoutes(app);
+    registerStorageObserverRoutes(app, container);
 
     app.use(express.static(path.join(__dirname, '../../desktop-shell/dist')));
     app.use(express.static(path.join(__dirname, '../../zellous')));
@@ -127,7 +137,7 @@ async function main() {
       console.log('\nPress Ctrl+C to shutdown\n');
     });
 
-    setupGracefulShutdown(httpServer, wss, fileWatchers);
+    setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager);
 
     return new Promise(() => {});
 
