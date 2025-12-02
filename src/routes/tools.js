@@ -7,7 +7,7 @@ export function registerToolRoutes(app, container) {
   const repository = container.resolve('ToolRepository');
 
   app.get('/api/tools', asyncHandler(async (req, res) => {
-    const tools = repository.getAll();
+    const tools = await repository.getAll();
     res.json(tools);
   }));
 
