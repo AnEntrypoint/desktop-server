@@ -59,7 +59,6 @@ export function registerTaskRoutes(app, container) {
     service.unregisterActiveTask(runId);
     logOperation('task-completed', { runId, taskName, status, duration });
     broadcastTaskProgress(taskName, runId, { stage: status === 'success' ? 'completed' : status, percentage: 100, details: `Task ${status === 'success' ? 'completed' : status} in ${duration}ms` });
-    service.invalidateMetricsCache();
     broadcastToRunSubscribers({ type: 'run-completed', runId, taskName, status, duration, timestamp: result.timestamp });
     broadcastToTaskSubscribers(taskName, { type: 'run-completed', runId, status, duration });
     res.json(result);

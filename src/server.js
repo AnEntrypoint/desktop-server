@@ -66,13 +66,14 @@ async function main() {
     const container = setupDIContainer();
 
     const stateDir = path.join(WORK_DIR, '.state');
-    const stateAdapter = new FileSystemAdapter(stateDir);
-    const stateManager = new StateManager(stateAdapter, {
-      maxCacheSize: parseInt(process.env.STATE_CACHE_SIZE || '5000'),
-      cacheTTL: parseInt(process.env.STATE_TTL_MS || '600000'),
-      cleanupInterval: parseInt(process.env.STATE_CLEANUP_INTERVAL_MS || '60000')
-    });
-    container.register('StateManager', stateManager);
+    container.register('StateManager', () => {
+      const stateAdapter = new FileSystemAdapter(stateDir);
+      return new StateManager(stateAdapter, {
+        maxCacheSize: parseInt(process.env.STATE_CACHE_SIZE || '5000'),
+        cacheTTL: parseInt(process.env.STATE_TTL_MS || '600000'),
+        cleanupInterval: parseInt(process.env.STATE_CLEANUP_INTERVAL_MS || '60000')
+      });
+    }, { singleton: true });
 
     const app = express();
     app.use(express.json({ limit: '50mb' }));
@@ -137,6 +138,7 @@ async function main() {
       console.log('\nPress Ctrl+C to shutdown\n');
     });
 
+    const stateManager = container.resolve('StateManager');
     setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager);
 
     return new Promise(() => {});
