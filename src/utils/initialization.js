@@ -33,7 +33,7 @@ export async function ensureDirectories(config) {
 }
 
 export function loadStateKit() {
-  const sequentialMachinePath = path.join(__dirname, '../../sequential-machine');
+  const sequentialMachinePath = path.resolve(__dirname, '../../../sequential-machine');
 
   let resolvedMachinePath;
   try {

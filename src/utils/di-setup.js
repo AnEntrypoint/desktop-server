@@ -1,3 +1,5 @@
+import path from 'path';
+import os from 'os';
 import { createContainer } from '@sequential/dependency-injection';
 import { TaskRepository, FlowRepository, ToolRepository, FileRepository } from '@sequential/data-access-layer';
 import { TaskService } from '@sequential/task-execution-service';
@@ -6,7 +8,10 @@ import { CONFIG } from '@sequential/server-utilities';
 export function setupDIContainer() {
   const container = createContainer();
 
-  container.register('TaskRepository', () => new TaskRepository(), { singleton: true });
+  const ecosystemPath = process.env.ECOSYSTEM_PATH || path.join(os.homedir(), 'sequential-ecosystem');
+  const tasksDir = path.join(ecosystemPath, 'tasks');
+
+  container.register('TaskRepository', () => new TaskRepository(tasksDir), { singleton: true });
 
   container.register('FlowRepository', () => new FlowRepository(), { singleton: true });
 
