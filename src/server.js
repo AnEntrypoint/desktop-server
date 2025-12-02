@@ -98,7 +98,7 @@ async function main() {
     app.use('/api/', createRequestLogger());
     app.use('/api/', createRateLimitMiddleware(100, 60000));
 
-    registerDebugRoutes(app);
+    registerDebugRoutes(app, container);
     registerAppRoutes(app, appRegistry, __dirname);
     registerSequentialOsRoutes(app, kit, STATEKIT_DIR);
     registerFileRoutes(app, container);

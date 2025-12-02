@@ -2,7 +2,7 @@ import { asyncHandler, getOperationLog } from '../middleware/error-handler.js';
 import { getFromCache, getRequestLog, CONFIG } from '@sequential/server-utilities';
 import { createError } from '@sequential/error-handling';
 
-export function registerDebugRoutes(app) {
+export function registerDebugRoutes(app, container) {
   app.get('/api/logs', asyncHandler((req, res) => {
     const filter = req.query.filter;
     const logs = getRequestLog(filter ? JSON.parse(filter) : null);
@@ -27,5 +27,15 @@ export function registerDebugRoutes(app) {
 
   app.post('/api/cache-clear', asyncHandler((req, res) => {
     res.json({ success: true, message: 'Cache would be cleared' });
+  }));
+
+  app.get('/api/state/stats', asyncHandler((req, res) => {
+    const stateManager = container.resolve('StateManager');
+    const stats = stateManager.getCacheStats();
+    res.json({
+      cache: stats,
+      timestamp: new Date().toISOString(),
+      message: 'StateManager cache statistics'
+    });
   }));
 }
