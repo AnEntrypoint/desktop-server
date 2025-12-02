@@ -10,7 +10,7 @@ export function registerTaskRoutes(app, container) {
   const stateManager = container.resolve('StateManager');
 
   app.get('/api/tasks', asyncHandler(async (req, res) => {
-    const tasks = repository.getAll();
+    const tasks = await repository.getAll();
     res.json(tasks);
   }));
 
@@ -21,7 +21,7 @@ export function registerTaskRoutes(app, container) {
     validateParam(validateTaskName, 'taskName')(taskName);
     input = sanitizeInput(input || {});
 
-    const config = repository.getConfig(taskName);
+    const config = await repository.getConfig(taskName);
     service.validateInputs(taskName, input, config);
 
     const runId = service.createRunId();
@@ -33,7 +33,7 @@ export function registerTaskRoutes(app, container) {
     let output = null, status = 'success', error = null;
     try {
       broadcastTaskProgress(taskName, runId, { stage: 'executing', percentage: 25, details: 'Reading task code' });
-      const code = repository.getCode(taskName);
+      const code = await repository.getCode(taskName);
 
       broadcastTaskProgress(taskName, runId, { stage: 'executing', percentage: 50, details: 'Running task code' });
       output = await service.executeTask(runId, taskName, code, input, task.cancelled);

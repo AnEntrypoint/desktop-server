@@ -7,14 +7,14 @@ export function registerFlowRoutes(app, container) {
   const repository = container.resolve('FlowRepository');
 
   app.get('/api/flows', asyncHandler(async (req, res) => {
-    const flows = repository.getAll();
+    const flows = await repository.getAll();
     res.json(flows);
   }));
 
   app.get('/api/flows/:flowId', asyncHandler(async (req, res) => {
     const { flowId } = req.params;
     validateParam(validateTaskName, 'flowId')(flowId);
-    const flow = repository.get(flowId);
+    const flow = await repository.get(flowId);
     res.json(flow);
   }));
 
