@@ -77,6 +77,35 @@ class AppRegistry {
       }
     }
 
+    const ecosystemPath = process.env.ECOSYSTEM_PATH;
+    if (ecosystemPath) {
+      const localAppsDir = path.join(ecosystemPath, '.sequential', 'apps');
+      try {
+        if (await fs.pathExists(localAppsDir)) {
+          const appDirs = await fs.readdir(localAppsDir);
+          for (const appDir of appDirs) {
+            const appPath = path.join(localAppsDir, appDir);
+            const manifestPath = path.join(appPath, 'manifest.json');
+            try {
+              if (await fs.pathExists(manifestPath)) {
+                const manifest = await fs.readJSON(manifestPath);
+                this.validateManifest(manifest, appDir);
+                this.apps.set(manifest.id, {
+                  manifest,
+                  basePath: appPath
+                });
+                console.log(`  ✓ Registered local app: ${manifest.name} (${manifest.id})`);
+              }
+            } catch (error) {
+              console.error(`  ✗ Failed to load local app ${appDir}:`, error.message);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`  ✗ Failed to discover local apps:`, error.message);
+      }
+    }
+
     console.log(`✓ Discovered ${this.apps.size} apps`);
   }
 
