@@ -12,6 +12,7 @@ import { createErrorHandler } from './middleware/error-handler.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { registerSequentialOsRoutes } from './routes/sequential-os.js';
 import { registerFileRoutes } from './routes/files.js';
+import { registerVfsRoutes } from './routes/vfs.js';
 import { registerTaskRoutes, getActiveTasks } from './routes/tasks.js';
 import { registerFlowRoutes } from './routes/flows.js';
 import { registerToolRoutes } from './routes/tools.js';
@@ -103,6 +104,7 @@ async function main() {
     registerAppRoutes(app, appRegistry, __dirname);
     registerSequentialOsRoutes(app, kit, STATEKIT_DIR);
     registerFileRoutes(app, container);
+    registerVfsRoutes(app, container);
     registerTaskRoutes(app, container);
     registerFlowRoutes(app, container);
     registerToolRoutes(app, container);
