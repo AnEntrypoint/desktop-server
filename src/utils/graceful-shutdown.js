@@ -1,6 +1,6 @@
 import { backgroundTaskManager } from '@sequential/server-utilities';
 
-export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager) {
+export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool) {
   const gracefulShutdown = (signal) => {
     console.log(`\n\n[${signal}] Shutting down gracefully...`);
 
@@ -24,20 +24,31 @@ export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManage
       console.error('Error cleaning up background tasks:', e.message);
     }
 
-    httpServer.close(async () => {
+    (async () => {
       try {
-        if (stateManager) {
-          await stateManager.shutdown();
-          console.log('✓ StateManager shutdown complete');
+        if (queueWorkerPool) {
+          await queueWorkerPool.stop();
+          console.log('✓ Queue worker pool stopped');
         }
       } catch (e) {
-        console.error('Error shutting down StateManager:', e.message);
+        console.error('Error stopping worker pool:', e.message);
       }
 
-      clearTimeout(shutdownTimeout);
-      console.log('✓ HTTP server closed');
-      process.exit(0);
-    });
+      httpServer.close(async () => {
+        try {
+          if (stateManager) {
+            await stateManager.shutdown();
+            console.log('✓ StateManager shutdown complete');
+          }
+        } catch (e) {
+          console.error('Error shutting down StateManager:', e.message);
+        }
+
+        clearTimeout(shutdownTimeout);
+        console.log('✓ HTTP server closed');
+        process.exit(0);
+      });
+    })();
 
     wss.clients.forEach((ws) => {
       if (ws.readyState === 1) {
