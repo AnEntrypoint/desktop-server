@@ -16,12 +16,13 @@ import { registerVfsRoutes } from './routes/vfs.js';
 import { registerTaskRoutes, getActiveTasks } from './routes/tasks.js';
 import { registerFlowRoutes } from './routes/flows.js';
 import { registerToolRoutes } from './routes/tools.js';
+import { registerQueueRoutes } from './routes/queue.js';
 import { registerRunsRoutes } from './routes/runs.js';
 import { registerAppRoutes } from './routes/apps.js';
 import { registerDebugRoutes } from './routes/debug.js';
 import { registerStorageObserverRoutes } from './routes/storage-observer.js';
 import { registerBackgroundTaskRoutes } from './routes/background-tasks.js';
-import { CONFIG } from '@sequential/server-utilities';
+import { CONFIG, taskQueueManager } from '@sequential/server-utilities';
 import { setupDIContainer } from './utils/di-setup.js';
 import { ensureDirectories, loadStateKit, initializeStateKit, validateEnvironment } from './utils/initialization.js';
 import { setupHotReload, closeFileWatchers } from './utils/hot-reload.js';
@@ -111,6 +112,7 @@ async function main() {
     registerTaskRoutes(app, container);
     registerFlowRoutes(app, container);
     registerToolRoutes(app, container);
+    registerQueueRoutes(app, container);
     registerRunsRoutes(app, () => getActiveTasks(container));
     registerStorageObserverRoutes(app, container);
     registerBackgroundTaskRoutes(app);
@@ -166,6 +168,8 @@ async function main() {
 
     const stateManager = container.resolve('StateManager');
     backgroundTaskManager.setStateManager(stateManager);
+    taskQueueManager.setStateManager(stateManager);
+    await taskQueueManager.loadFromStorage();
 
     const { fileWatchers } = setupHotReload(app, appRegistry, __dirname);
 
