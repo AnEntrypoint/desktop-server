@@ -22,8 +22,9 @@ import { registerAppRoutes } from './routes/apps.js';
 import { registerDebugRoutes } from './routes/debug.js';
 import { registerStorageObserverRoutes } from './routes/storage-observer.js';
 import { registerBackgroundTaskRoutes } from './routes/background-tasks.js';
-import { CONFIG, taskQueueManager, queueWorkerPool } from '@sequential/server-utilities';
+import { CONFIG, taskQueueManager, queueWorkerPool, taskScheduler } from '@sequential/server-utilities';
 import { registerWorkerRoutes } from './routes/workers.js';
+import { registerSchedulerRoutes } from './routes/scheduler.js';
 import { setupDIContainer } from './utils/di-setup.js';
 import { ensureDirectories, loadStateKit, initializeStateKit, validateEnvironment } from './utils/initialization.js';
 import { setupHotReload, closeFileWatchers } from './utils/hot-reload.js';
@@ -82,6 +83,7 @@ async function main() {
     }, { singleton: true });
 
     container.register('QueueWorkerPool', () => queueWorkerPool, { singleton: true });
+    container.register('TaskScheduler', () => taskScheduler, { singleton: true });
 
     const app = express();
     app.use(express.json({ limit: '50mb' }));
@@ -117,6 +119,7 @@ async function main() {
     registerToolRoutes(app, container);
     registerQueueRoutes(app, container);
     registerWorkerRoutes(app, container);
+    registerSchedulerRoutes(app, container);
     registerRunsRoutes(app, () => getActiveTasks(container));
     registerStorageObserverRoutes(app, container);
     registerBackgroundTaskRoutes(app);
@@ -178,6 +181,9 @@ async function main() {
     queueWorkerPool.setDependencies(taskQueueManager, backgroundTaskManager);
     await queueWorkerPool.start();
 
+    taskScheduler.setDependencies(taskQueueManager, stateManager);
+    await taskScheduler.start();
+
     const { fileWatchers } = setupHotReload(app, appRegistry, __dirname);
 
     const baseUrl = `${PROTOCOL}://${HOSTNAME}:${PORT}`;
@@ -199,7 +205,7 @@ async function main() {
       console.log('\nPress Ctrl+C to shutdown\n');
     });
 
-    setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool);
+    setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool, taskScheduler);
 
     return new Promise(() => {});
 

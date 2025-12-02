@@ -1,6 +1,6 @@
 import { backgroundTaskManager } from '@sequential/server-utilities';
 
-export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool) {
+export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool, taskScheduler) {
   const gracefulShutdown = (signal) => {
     console.log(`\n\n[${signal}] Shutting down gracefully...`);
 
@@ -25,6 +25,15 @@ export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManage
     }
 
     (async () => {
+      try {
+        if (taskScheduler) {
+          await taskScheduler.stop();
+          console.log('✓ Task scheduler stopped');
+        }
+      } catch (e) {
+        console.error('Error stopping scheduler:', e.message);
+      }
+
       try {
         if (queueWorkerPool) {
           await queueWorkerPool.stop();
