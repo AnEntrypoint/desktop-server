@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import { createError } from '@sequential/error-handling';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { createCacheKey, getFromCache, setCache } from '@sequential/server-utilities';
+import { formatResponse } from '@sequential/response-formatting';
 
 async function getAllRuns(includeTaskName = true) {
   const tasksDir = path.join(process.cwd(), 'tasks');
@@ -37,14 +38,14 @@ async function getAllRuns(includeTaskName = true) {
 export function registerRunsRoutes(app, getActiveTasks) {
   app.get('/api/runs', asyncHandler(async (req, res) => {
     const allRuns = await getAllRuns(true);
-    res.json(allRuns.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+    res.json(formatResponse({ runs: allRuns.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)) }));
   }));
 
   app.get('/api/metrics', asyncHandler(async (req, res) => {
     const cacheKey = createCacheKey('metrics');
     const cached = getFromCache(cacheKey);
     if (cached) {
-      return res.json({ ...cached, fromCache: true });
+      return res.json(formatResponse({ metrics: cached, fromCache: true }));
     }
 
     const allRuns = await getAllRuns(false);
@@ -78,6 +79,6 @@ export function registerRunsRoutes(app, getActiveTasks) {
       }
     };
     setCache(cacheKey, metrics);
-    res.json(metrics);
+    res.json(formatResponse({ metrics }));
   }));
 }
