@@ -89,11 +89,18 @@ async function main() {
     app.use(express.json({ limit: '50mb' }));
     app.use(securityHeaders);
 
+    const corsConfig = {
+      origin: process.env.CORS_ORIGIN || '*',
+      methods: (process.env.CORS_METHODS || 'GET,POST,PUT,DELETE,OPTIONS').split(','),
+      headers: (process.env.CORS_HEADERS || 'Content-Type,Authorization').split(','),
+      maxAge: parseInt(process.env.CORS_MAX_AGE || '3600')
+    };
+
     app.use((req, res, next) => {
-      res.header('Access-Control-Allow-Origin', process.env.CORS_ORIGIN || '*');
-      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      res.header('Access-Control-Max-Age', '3600');
+      res.header('Access-Control-Allow-Origin', corsConfig.origin);
+      res.header('Access-Control-Allow-Methods', corsConfig.methods.join(', '));
+      res.header('Access-Control-Allow-Headers', corsConfig.headers.join(', '));
+      res.header('Access-Control-Max-Age', corsConfig.maxAge.toString());
       if (req.method === 'OPTIONS') {
         return res.sendStatus(204);
       }
