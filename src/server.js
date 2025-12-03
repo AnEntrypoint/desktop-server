@@ -22,6 +22,8 @@ import { registerAppRoutes } from './routes/apps.js';
 import { registerDebugRoutes } from './routes/debug.js';
 import { registerStorageObserverRoutes } from './routes/storage-observer.js';
 import { registerBackgroundTaskRoutes } from './routes/background-tasks.js';
+import { registerErrorLoggingRoutes } from './routes/error-logging.js';
+import { registerHealthRoutes } from './routes/health.js';
 import { CONFIG, taskQueueManager, queueWorkerPool, taskScheduler } from '@sequential/server-utilities';
 import { registerWorkerRoutes } from './routes/workers.js';
 import { registerSchedulerRoutes } from './routes/scheduler.js';
@@ -130,6 +132,8 @@ async function main() {
     registerRunsRoutes(app, () => getActiveTasks(container));
     registerStorageObserverRoutes(app, container);
     registerBackgroundTaskRoutes(app);
+    registerErrorLoggingRoutes(app);
+    registerHealthRoutes(app);
 
     app.use(express.static(path.join(__dirname, '../../desktop-shell/dist')));
     app.use(express.static(path.join(__dirname, '../../zellous')));
