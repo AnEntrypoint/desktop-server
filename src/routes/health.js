@@ -1,6 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { asyncHandler } from '../middleware/error-handler.js';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
 
 const ERROR_LOG_DIR = path.join(process.cwd(), '.sequential-errors');
 
@@ -8,7 +9,7 @@ export function registerHealthRoutes(app) {
   app.get('/api/health', asyncHandler(async (req, res) => {
     const health = {
       status: 'ok',
-      timestamp: new Date().toISOString(),
+      timestamp: nowISO(),
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       pid: process.pid,
@@ -34,7 +35,7 @@ export function registerHealthRoutes(app) {
   app.get('/api/health/detailed', asyncHandler(async (req, res) => {
     const health = {
       status: 'ok',
-      timestamp: new Date().toISOString(),
+      timestamp: nowISO(),
       services: {},
       metrics: {}
     };

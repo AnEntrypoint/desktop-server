@@ -1,25 +1,22 @@
 import path from 'path';
 import fs from 'fs';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { formatResponse, formatError } from '@sequential/response-formatting';
+import { formatResponse } from '@sequential/response-formatting';
+import { throwNotFound, throwPathTraversal } from '@sequential/error-handling';
 
 export function registerAppRoutes(app, appRegistry, __dirname) {
   app.get('/api/apps', asyncHandler(async (req, res) => {
-    const manifests = appRegistry.getManifests();
-    res.json(formatResponse({ manifests }));
+    res.json(formatResponse({ manifests: appRegistry.getManifests() }));
   }));
 
-  app.use('/apps/:appId', (req, res, next) => {
+  app.use('/apps/:appId/*', (req, res, next) => {
     const { appId } = req.params;
-    const app = appRegistry.getApp(appId);
-    if (!app) {
-      return res.status(404).json(formatError(404, { code: 'NOT_FOUND', message: 'App not found' }));
-    }
+    const appInfo = appRegistry.getApp(appId);
+    if (!appInfo) throwNotFound('App', appId);
 
     const appPath = path.resolve(__dirname, `../../${appId}`);
-    const distPath = path.resolve(appPath, 'dist');
-    const requestedFile = req.params[0] || 'index.html';
-    const filePath = path.resolve(distPath, requestedFile);
+    const requestedPath = req.params[0] || 'dist/index.html';
+    const filePath = path.resolve(appPath, requestedPath);
 
     let realPath;
     try {
@@ -34,12 +31,13 @@ export function registerAppRoutes(app, appRegistry, __dirname) {
           realPath = filePath;
         }
       } else {
-        return res.status(403).json(formatError(403, { code: 'FORBIDDEN', message: 'Access denied' }));
+        throwPathTraversal(filePath);
       }
     }
 
-    if (!realPath.startsWith(distPath + path.sep) && realPath !== distPath) {
-      return res.status(403).json(formatError(403, { code: 'FORBIDDEN', message: 'Access denied: path traversal detected' }));
+    const realAppPath = fs.realpathSync(appPath);
+    if (!realPath.startsWith(realAppPath + path.sep) && realPath !== realAppPath) {
+      throwPathTraversal(realPath);
     }
 
     res.sendFile(realPath);
