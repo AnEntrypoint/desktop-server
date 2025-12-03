@@ -1,4 +1,5 @@
 import { createErrorHandler as createAppErrorHandler } from '@sequential/error-handling';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
 
 const operationLog = [];
 
@@ -14,7 +15,7 @@ export function logOperation(type, data) {
   operationLog.push({
     type,
     data,
-    timestamp: new Date().toISOString()
+    timestamp: nowISO()
   });
 }
 

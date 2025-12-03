@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { AppRegistry } from './app-registry.js';
 import http from 'http';
+import logger from '@sequential/sequential-logging';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
 
 import { createRequestLogger } from '@sequential/server-utilities';
 import { createRateLimitMiddleware } from '@sequential/input-sanitization';
@@ -45,7 +47,7 @@ const PROTOCOL = CONFIG.server.protocol;
 
 async function main() {
   try {
-    console.log('\n🚀 Starting Sequential Desktop Server...\n');
+    logger.info('\n🚀 Starting Sequential Desktop Server...\n');
 
     validateEnvironment();
 
@@ -147,7 +149,7 @@ async function main() {
       broadcastBackgroundTaskEvent({
         type: 'task:start',
         data: taskData,
-        timestamp: new Date().toISOString()
+        timestamp: nowISO()
       });
     });
 
@@ -155,7 +157,7 @@ async function main() {
       broadcastBackgroundTaskEvent({
         type: 'task:complete',
         status,
-        timestamp: new Date().toISOString()
+        timestamp: nowISO()
       });
     });
 
@@ -163,7 +165,7 @@ async function main() {
       broadcastBackgroundTaskEvent({
         type: 'task:failed',
         status,
-        timestamp: new Date().toISOString()
+        timestamp: nowISO()
       });
     });
 
@@ -171,7 +173,7 @@ async function main() {
       broadcastBackgroundTaskEvent({
         type: 'task:killed',
         data: taskData,
-        timestamp: new Date().toISOString()
+        timestamp: nowISO()
       });
     });
 
@@ -180,7 +182,7 @@ async function main() {
         type: 'task:progress',
         id,
         progress,
-        timestamp: new Date().toISOString()
+        timestamp: nowISO()
       });
     });
 
@@ -202,18 +204,18 @@ async function main() {
     const wsBaseUrl = `${wsProtocol}://${HOSTNAME}:${PORT}`;
 
     httpServer.listen(PORT, () => {
-      console.log('\n✓ Sequential Desktop Server initialized\n');
-      console.log('Access points:');
-      console.log(`  Desktop:        ${baseUrl}`);
-      console.log(`  Apps API:       ${baseUrl}/api/apps`);
-      console.log(`  Sequential-OS:  ${baseUrl}/api/sequential-os/*`);
-      console.log(`  WebSocket:      ${wsBaseUrl}/api/runs/subscribe`);
-      console.log(`  Zellous:        ${baseUrl}/`);
-      console.log('\nRegistered apps:');
+      logger.info('\n✓ Sequential Desktop Server initialized\n');
+      logger.info('Access points:');
+      logger.info(`  Desktop:        ${baseUrl}`);
+      logger.info(`  Apps API:       ${baseUrl}/api/apps`);
+      logger.info(`  Sequential-OS:  ${baseUrl}/api/sequential-os/*`);
+      logger.info(`  WebSocket:      ${wsBaseUrl}/api/runs/subscribe`);
+      logger.info(`  Zellous:        ${baseUrl}/`);
+      logger.info('\nRegistered apps:');
       appRegistry.getManifests().forEach(manifest => {
-        console.log(`  ${manifest.icon} ${manifest.name}: ${baseUrl}/apps/${manifest.id}/${manifest.entry}`);
+        logger.info(`  ${manifest.icon} ${manifest.name}: ${baseUrl}/apps/${manifest.id}/${manifest.entry}`);
       });
-      console.log('\nPress Ctrl+C to shutdown\n');
+      logger.info('\nPress Ctrl+C to shutdown\n');
     });
 
     setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool, taskScheduler);
@@ -221,13 +223,12 @@ async function main() {
     return new Promise(() => {});
 
   } catch (error) {
-    console.error('\n✗ Failed to start server');
-    console.error(`  Error: ${error.message}`);
+    logger.error('\n✗ Failed to start server', error);
     throw error;
   }
 }
 
 main().catch(error => {
-  console.error('Fatal error:', error);
+  logger.error('Fatal error:', error);
   process.exit(1);
 });

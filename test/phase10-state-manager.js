@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import http from 'node:http';
 import { StateManager, MemoryAdapter } from '@sequential/persistent-state';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
 
 const BASE_URL = 'http://localhost:8003';
 

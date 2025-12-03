@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { createServerError, createForbiddenError } from '@sequential/error-handling';
 import { validator } from '@sequential/core-config';
+import logger from '@sequential/sequential-logging';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -24,10 +25,10 @@ export async function ensureDirectories(config) {
   await fs.ensureDir(VFS_DIR);
   await fs.ensureDir(ZELLOUS_DATA_DIR);
 
-  console.log('✓ Directories initialized');
-  console.log(`  StateKit: ${STATEKIT_DIR}`);
-  console.log(`  VFS: ${VFS_DIR}`);
-  console.log(`  Zellous: ${ZELLOUS_DATA_DIR}`);
+  logger.info('✓ Directories initialized');
+  logger.info(`  StateKit: ${STATEKIT_DIR}`);
+  logger.info(`  VFS: ${VFS_DIR}`);
+  logger.info(`  Zellous: ${ZELLOUS_DATA_DIR}`);
 
   return { STATEKIT_DIR, WORK_DIR, VFS_DIR, ZELLOUS_DATA_DIR };
 }
@@ -39,7 +40,7 @@ export function loadStateKit() {
   try {
     resolvedMachinePath = fs.realpathSync(sequentialMachinePath);
   } catch (err) {
-    console.error('Failed to resolve sequential-machine path:', err.message);
+    logger.error('Failed to resolve sequential-machine path:', err.message);
     throw createServerError('Cannot initialize StateKit: sequential-machine directory not found or inaccessible', err);
   }
 
@@ -51,7 +52,7 @@ export function loadStateKit() {
   try {
     ({ StateKit } = require(resolvedMachinePath));
   } catch (err) {
-    console.error('Failed to load StateKit from:', resolvedMachinePath);
+    logger.error('Failed to load StateKit from:', resolvedMachinePath);
     throw createServerError(`Cannot load StateKit: ${err.message}`, err);
   }
 
@@ -65,7 +66,7 @@ export async function initializeStateKit(StateKit, statekitDir, workDir) {
   });
 
   const status = await kit.status();
-  console.log(`✓ StateKit initialized (${status.added.length + status.modified.length + status.deleted.length} uncommitted changes)`);
+  logger.info(`✓ StateKit initialized (${status.added.length + status.modified.length + status.deleted.length} uncommitted changes)`);
 
   return kit;
 }
@@ -73,10 +74,10 @@ export async function initializeStateKit(StateKit, statekitDir, workDir) {
 export function validateEnvironment() {
   try {
     validator.validate(process.env, true);
-    console.log('✓ Environment configuration validated');
+    logger.info('✓ Environment configuration validated');
     return validator.getAll();
   } catch (err) {
-    console.error('❌ Environment validation failed:', err.message);
+    logger.error('❌ Environment validation failed:', err.message);
     process.exit(1);
   }
 }

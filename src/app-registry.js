@@ -4,6 +4,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { createValidationError } from '@sequential/error-handling';
+import logger from '@sequential/sequential-logging';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -56,7 +57,7 @@ class AppRegistry {
   }
 
   async discover() {
-    console.log('Discovering apps...');
+    logger.info('Discovering apps...');
 
     for (const appDir of this.appDirs) {
       const fullPath = path.join(this.basePath, appDir);
@@ -70,10 +71,10 @@ class AppRegistry {
             manifest,
             basePath: fullPath
           });
-          console.log(`  ✓ Registered app: ${manifest.name} (${manifest.id})`);
+          logger.info(`  ✓ Registered app: ${manifest.name} (${manifest.id})`);
         }
       } catch (error) {
-        console.error(`  ✗ Failed to load ${appDir}:`, error.message);
+        logger.error(`  ✗ Failed to load ${appDir}:`, error.message);
       }
     }
 
@@ -94,19 +95,19 @@ class AppRegistry {
                   manifest,
                   basePath: appPath
                 });
-                console.log(`  ✓ Registered local app: ${manifest.name} (${manifest.id})`);
+                logger.info(`  ✓ Registered local app: ${manifest.name} (${manifest.id})`);
               }
             } catch (error) {
-              console.error(`  ✗ Failed to load local app ${appDir}:`, error.message);
+              logger.error(`  ✗ Failed to load local app ${appDir}:`, error.message);
             }
           }
         }
       } catch (error) {
-        console.error(`  ✗ Failed to discover local apps:`, error.message);
+        logger.error(`  ✗ Failed to discover local apps:`, error.message);
       }
     }
 
-    console.log(`✓ Discovered ${this.apps.size} apps`);
+    logger.info(`✓ Discovered ${this.apps.size} apps`);
   }
 
   getManifests() {
