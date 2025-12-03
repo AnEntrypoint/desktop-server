@@ -2,6 +2,8 @@ import fs from 'fs-extra';
 import path from 'path';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { broadcastBackgroundTaskEvent } from '@sequential/websocket-broadcaster';
+import logger from '@sequential/sequential-logging';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
 
 const ERROR_LOG_DIR = path.join(process.cwd(), '.sequential-errors');
 
@@ -10,12 +12,12 @@ export function registerErrorLoggingRoutes(app) {
 
   app.post('/api/errors/log', asyncHandler(async (req, res) => {
     const error = req.body;
-    const timestamp = new Date().toISOString().split('T')[0];
+    const timestamp = nowISO().split('T')[0];
     const logFile = path.join(ERROR_LOG_DIR, `${timestamp}.jsonl`);
 
     const logEntry = {
       ...error,
-      receivedAt: new Date().toISOString(),
+      receivedAt: nowISO(),
       ip: req.ip,
       method: req.method,
       endpoint: req.originalUrl
@@ -23,14 +25,14 @@ export function registerErrorLoggingRoutes(app) {
 
     try {
       await fs.appendFile(logFile, JSON.stringify(logEntry) + '\n');
-      console.error(`[Error Logged] ${error.app}: ${error.message}`);
+      logger.error(`[Error Logged] ${error.app}: ${error.message}`);
       broadcastBackgroundTaskEvent({
         type: 'error:logged',
         data: logEntry,
-        timestamp: new Date().toISOString()
+        timestamp: nowISO()
       });
     } catch (writeErr) {
-      console.error('Failed to write error log:', writeErr);
+      logger.error('Failed to write error log:', writeErr);
     }
 
     res.json({ success: true, errorId: error.id });

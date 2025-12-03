@@ -1,80 +1,43 @@
 import { validateTaskName } from '@sequential/core';
-import { createError, createValidationError } from '@sequential/error-handling';
+import { createError, createValidationError, throwValidationError, throwNotFound } from '@sequential/error-handling';
 import { validateParam, validateRequired, validateType, sanitizeInput } from '@sequential/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { executeTaskWithTimeout } from '@sequential/server-utilities';
-import { formatResponse, formatError } from '@sequential/response-formatting';
+import { formatResponse } from '@sequential/response-formatting';
+import { validateRequest } from '@sequential/request-validator';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
+import { delay, withRetry } from '@sequential/async-patterns';
+import { createCRUDRouter, registerCRUDRoutes } from '@sequential/crud-router';
+import { injectDependencies } from '@sequential/dependency-middleware';
 
 export function registerToolRoutes(app, container) {
   const repository = container.resolve('ToolRepository');
 
-  app.get('/api/tools', asyncHandler(async (req, res) => {
-    const tools = await repository.getAll();
-    res.json(formatResponse(tools));
-  }));
+  const toolHandlers = {
+    test: asyncHandler(async (req, res) => {
+      const { toolName, implementation, input } = req.body;
 
-  app.post('/api/tools', asyncHandler(async (req, res) => {
-    const { name, definition } = req.body;
+      validateRequired('toolName', toolName);
+      validateRequired('implementation', implementation);
+      validateType('toolName', toolName, 'string');
+      validateType('implementation', implementation, 'string');
 
-    validateRequired('name', name);
-    validateType('name', name, 'string');
-    validateParam(validateTaskName, 'name')(name);
-
-    if (definition && typeof definition !== 'object') {
-      throw createValidationError('definition must be an object', 'definition');
-    }
-
-    const tool = { id: name, name: sanitizeInput(name), ...(definition || {}), timestamp: new Date().toISOString() };
-    await repository.save(name, tool);
-    res.json(formatResponse(tool));
-  }));
-
-  app.put('/api/tools/:id', asyncHandler(async (req, res) => {
-    const { definition } = req.body;
-    const { id } = req.params;
-
-    validateRequired('id', id);
-    validateType('id', id, 'string');
-    validateParam(validateTaskName, 'id')(id);
-
-    if (definition && typeof definition !== 'object') {
-      throw createValidationError('definition must be an object', 'definition');
-    }
-
-    const tool = { id, ...(definition || {}), timestamp: new Date().toISOString() };
-    await repository.save(id, tool);
-    res.json(formatResponse(tool));
-  }));
-
-  app.delete('/api/tools/:id', asyncHandler(async (req, res) => {
-    const { id } = req.params;
-
-    validateRequired('id', id);
-    validateType('id', id, 'string');
-    validateParam(validateTaskName, 'id')(id);
-
-    await repository.delete(id);
-    res.json(formatResponse({ success: true, id }));
-  }));
-
-  app.post('/api/tools/test', asyncHandler(async (req, res) => {
-    const { toolName, implementation, input } = req.body;
-
-    validateRequired('toolName', toolName);
-    validateRequired('implementation', implementation);
-    validateType('toolName', toolName, 'string');
-    validateType('implementation', implementation, 'string');
-
-    const startTime = Date.now();
-    try {
+      const startTime = Date.now();
       const result = await executeTaskWithTimeout(toolName, implementation, input || {}, 30000);
       const duration = Date.now() - startTime;
       res.json(formatResponse({ output: result, duration }));
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      res.status(500).json(formatError(500, { code: 'TOOL_TEST_FAILED', message: error.message, stack: error.stack, duration }));
+    })
+  };
+
+  registerCRUDRoutes(app, '/api/tools', {
+    repository,
+    resourceName: 'tool',
+    pluralName: 'tools',
+    asyncHandler,
+    customEndpoints: (router) => {
+      router.post('/test', toolHandlers.test);
     }
-  }));
+  });
 
   app.post('/api/tools/validate-imports', asyncHandler(async (req, res) => {
     const { packages } = req.body;

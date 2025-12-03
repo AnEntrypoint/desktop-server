@@ -1,24 +1,21 @@
 import { asyncHandler } from '../middleware/error-handler.js';
-import { formatResponse, formatError } from '@sequential/response-formatting';
+import { formatResponse } from '@sequential/response-formatting';
+import { parseResourceId, requireResource } from '@sequential/route-helpers';
+import { throwNotFound } from '@sequential/error-handling';
+import { createServiceFactory } from '@sequential/service-factory';
 
 export function registerWorkerRoutes(app, container) {
-  const queueWorkerPool = container.resolve('QueueWorkerPool');
+  const { getQueueWorkerPool } = createServiceFactory(container);
+  const queueWorkerPool = getQueueWorkerPool();
 
   app.get('/api/queue/workers/status', asyncHandler(async (req, res) => {
-    const stats = queueWorkerPool.getStats();
-    res.json(formatResponse({ stats }));
+    res.json(formatResponse({ stats: queueWorkerPool.getStats() }));
   }));
 
-  app.get('/api/queue/workers/:id', asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const workerId = parseInt(id);
-    const status = queueWorkerPool.getWorkerStatus(workerId);
-
-    if (!status) {
-      return res.status(404).json(formatError(404, { code: 'NOT_FOUND', message: `Worker ${id} not found` }));
-    }
-
-    res.json(formatResponse({ worker: { id: workerId, ...status } }));
+  app.get('/api/queue/workers/:id', parseResourceId('id'), asyncHandler(async (req, res) => {
+    const status = queueWorkerPool.getWorkerStatus(req.resourceId);
+    requireResource(status, 'Worker', req.resourceId);
+    res.json(formatResponse({ worker: { id: req.resourceId, ...status } }));
   }));
 
   app.get('/api/queue/workers', asyncHandler(async (req, res) => {
@@ -30,7 +27,6 @@ export function registerWorkerRoutes(app, container) {
     if (queueWorkerPool.isRunning) {
       return res.json(formatResponse({ message: 'Worker pool already running' }));
     }
-
     await queueWorkerPool.start();
     res.json(formatResponse({ message: 'Worker pool started', stats: queueWorkerPool.getStats() }));
   }));
@@ -39,7 +35,6 @@ export function registerWorkerRoutes(app, container) {
     if (!queueWorkerPool.isRunning) {
       return res.json(formatResponse({ message: 'Worker pool already stopped' }));
     }
-
     await queueWorkerPool.stop();
     res.json(formatResponse({ message: 'Worker pool stopped' }));
   }));

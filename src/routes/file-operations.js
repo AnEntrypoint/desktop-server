@@ -1,29 +1,14 @@
 import path from 'path';
 import fs from 'fs-extra';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { CONFIG } from '@sequential/server-utilities';
-import { logFileOperation, logFileSuccess, createServerError } from '@sequential/error-handling';
+import { CONFIG, createTimer } from '@sequential/server-utilities';
+import { createServerError } from '@sequential/error-handling';
 import { writeFileAtomicString } from '@sequential/file-operations';
-import { validate } from '@sequential/param-validation';
+import { validate, validatePath } from '@sequential/param-validation';
 import { validateFileName } from '@sequential/core';
 import { formatResponse, formatError } from '@sequential/response-formatting';
-
-function validateAndResolvePath(filePath) {
-  if (!filePath) throw createServerError('File path required');
-  const realPath = path.resolve(filePath);
-  if (!realPath.startsWith(process.cwd())) {
-    throw createServerError('Path traversal not allowed');
-  }
-  return realPath;
-}
-
-function startTiming() {
-  return Date.now();
-}
-
-function getDuration(startTime) {
-  return Date.now() - startTime;
-}
+import { validateRequest } from '@sequential/request-validator';
+import { createOperationLogger } from '@sequential/operation-logger';
 
 function handleFileError(operation, filePath, error, res) {
   const statusCode = error.httpCode || 500;
@@ -41,6 +26,7 @@ function broadcastFileEvent(eventType, filePath, metadata = {}) {
 
 export function registerFileRoutes(app, container) {
   if (!container) throw createServerError('Container required for FileRoutes');
+  const logger = createOperationLogger({ logOperation: () => {}, logFileOperation: (op, path, err, meta) => {}, logFileSuccess: (op, path, dur, meta) => {} });
 
   // READ OPERATIONS
   app.get('/api/files/current-path', (req, res) => {
@@ -49,7 +35,7 @@ export function registerFileRoutes(app, container) {
 
   app.get('/api/files/list', asyncHandler(async (req, res) => {
     const dir = req.query.dir || process.cwd();
-    const realPath = validateAndResolvePath(dir);
+    const realPath = validatePath(dir);
     const files = await fs.readdir(realPath, { withFileTypes: true });
     const items = await Promise.all(files.map(async (file) => {
       const filePath = path.join(realPath, file.name);
@@ -67,9 +53,9 @@ export function registerFileRoutes(app, container) {
 
   app.get('/api/files/read', asyncHandler(async (req, res) => {
     const filePath = req.query.path;
-    const startTime = startTiming();
+    const timer = createTimer();
     try {
-      const realPath = validateAndResolvePath(filePath);
+      const realPath = validatePath(filePath);
       const stat = await fs.stat(realPath);
       if (stat.isDirectory()) {
         return res.status(400).json(formatError(400, { code: 'INVALID_OPERATION', message: 'Cannot read directory' }));
@@ -78,16 +64,14 @@ export function registerFileRoutes(app, container) {
         const maxMb = Math.round(CONFIG.files.maxSizeBytes / (1024 * 1024));
         const error = new Error(`File too large (max ${maxMb}MB)`);
         error.code = 'FILE_TOO_LARGE';
-        logFileOperation('read', filePath, error, { size: stat.size, limit: CONFIG.files.maxSizeBytes });
+        logger.fileOperation('read', filePath, error, { size: stat.size, limit: CONFIG.files.maxSizeBytes });
         return res.status(400).json(formatError(400, { code: error.code, message: error.message }));
       }
       const content = await fs.readFile(realPath, 'utf8');
-      const duration = getDuration(startTime);
-      logFileSuccess('read', filePath, duration, { size: stat.size });
+      logger.fileSuccess('read', filePath, timer.elapsed(), { size: stat.size });
       res.json(formatResponse({ path: realPath, size: stat.size, content, modified: stat.mtime }));
     } catch (error) {
-      const duration = getDuration(startTime);
-      logFileOperation('read', filePath, error, { duration });
+      logger.fileOperation('read', filePath, error, { duration: timer.elapsed() });
       handleFileError('read', filePath, error, res);
     }
   }));
@@ -95,7 +79,7 @@ export function registerFileRoutes(app, container) {
   // WRITE OPERATIONS
   app.post('/api/files/save', asyncHandler(async (req, res) => {
     const { path: filePath, content } = req.body;
-    const startTime = startTiming();
+    const timer = createTimer();
 
     validate()
       .required('path', filePath)
@@ -104,21 +88,19 @@ export function registerFileRoutes(app, container) {
       .execute();
 
     try {
-      const realPath = validateAndResolvePath(filePath);
+      const realPath = validatePath(filePath);
       await writeFileAtomicString(realPath, content);
-      const duration = getDuration(startTime);
-      logFileSuccess('save', filePath, duration, { size: content.length });
+      logger.fileSuccess('save', filePath, timer.elapsed(), { size: content.length });
       res.json(formatResponse({ path: realPath, success: true }));
     } catch (error) {
-      const duration = getDuration(startTime);
-      logFileOperation('save', filePath, error, { duration, contentLength: content?.length || 0 });
+      logger.fileOperation('save', filePath, error, { duration: timer.elapsed(), contentLength: content?.length || 0 });
       handleFileError('save', filePath, error, res);
     }
   }));
 
   app.post('/api/files/write', asyncHandler(async (req, res) => {
     const { path: filePath, content } = req.body;
-    const startTime = startTiming();
+    const timer = createTimer();
 
     validate()
       .required('filePath', filePath)
@@ -127,23 +109,21 @@ export function registerFileRoutes(app, container) {
       .execute();
 
     try {
-      const realPath = validateAndResolvePath(filePath);
+      const realPath = validatePath(filePath);
       const isNew = !await fs.pathExists(realPath);
       await writeFileAtomicString(realPath, content);
-      const duration = getDuration(startTime);
-      logFileSuccess('write', filePath, duration, { size: content.length, isNew });
+      logger.fileSuccess('write', filePath, timer.elapsed(), { size: content.length, isNew });
       broadcastFileEvent(isNew ? 'file-created' : 'file-modified', filePath);
       res.json(formatResponse({ path: realPath, size: content.length, success: true }));
     } catch (error) {
-      const duration = getDuration(startTime);
-      logFileOperation('write', filePath, error, { duration, contentLength: content?.length || 0 });
+      logger.fileOperation('write', filePath, error, { duration: timer.elapsed(), contentLength: content?.length || 0 });
       handleFileError('write', filePath, error, res);
     }
   }));
 
   app.post('/api/files/mkdir', asyncHandler(async (req, res) => {
     const { path: dirPath } = req.body;
-    const startTime = startTiming();
+    const timer = createTimer();
 
     validate()
       .required('dirPath', dirPath)
@@ -151,22 +131,20 @@ export function registerFileRoutes(app, container) {
       .execute();
 
     try {
-      const realPath = validateAndResolvePath(dirPath);
+      const realPath = validatePath(dirPath);
       await fs.ensureDir(realPath);
-      const duration = getDuration(startTime);
-      logFileSuccess('mkdir', dirPath, duration);
+      logger.fileSuccess('mkdir', dirPath, timer.elapsed());
       broadcastFileEvent('directory-created', dirPath);
       res.json(formatResponse({ path: realPath, success: true }));
     } catch (error) {
-      const duration = getDuration(startTime);
-      logFileOperation('mkdir', dirPath, error, { duration });
+      logger.fileOperation('mkdir', dirPath, error, { duration: timer.elapsed() });
       handleFileError('mkdir', dirPath, error, res);
     }
   }));
 
   app.delete('/api/files', asyncHandler(async (req, res) => {
     const filePath = req.query.path || req.body?.path;
-    const startTime = startTiming();
+    const timer = createTimer();
 
     validate()
       .required('filePath', filePath)
@@ -174,15 +152,13 @@ export function registerFileRoutes(app, container) {
       .execute();
 
     try {
-      const realPath = validateAndResolvePath(filePath);
+      const realPath = validatePath(filePath);
       await fs.remove(realPath);
-      const duration = getDuration(startTime);
-      logFileSuccess('delete', filePath, duration);
+      logger.fileSuccess('delete', filePath, timer.elapsed());
       broadcastFileEvent('file-deleted', filePath);
       res.json(formatResponse({ path: realPath, success: true }));
     } catch (error) {
-      const duration = getDuration(startTime);
-      logFileOperation('delete', filePath, error, { duration });
+      logger.fileOperation('delete', filePath, error, { duration: timer.elapsed() });
       handleFileError('delete', filePath, error, res);
     }
   }));
@@ -190,7 +166,7 @@ export function registerFileRoutes(app, container) {
   // TRANSFORM OPERATIONS
   app.post('/api/files/rename', asyncHandler(async (req, res) => {
     const { path: filePath, newName } = req.body;
-    const startTime = startTiming();
+    const timer = createTimer();
 
     validate()
       .required('filePath', filePath)
@@ -199,26 +175,24 @@ export function registerFileRoutes(app, container) {
 
     try {
       validateFileName(newName);
-      const realPath = validateAndResolvePath(filePath);
+      const realPath = validatePath(filePath);
       const dir = path.dirname(realPath);
       const newPath = path.join(dir, newName);
-      validateAndResolvePath(newPath);
+      validatePath(newPath);
       await fs.rename(realPath, newPath);
-      const duration = getDuration(startTime);
       const newRelativePath = filePath.substring(0, filePath.lastIndexOf('/') + 1) + newName;
-      logFileSuccess('rename', filePath, duration, { newName });
+      logger.fileSuccess('rename', filePath, timer.elapsed(), { newName });
       broadcastFileEvent('file-renamed', filePath, { newPath: newRelativePath });
       res.json(formatResponse({ oldPath: realPath, newPath: newPath, success: true }));
     } catch (error) {
-      const duration = getDuration(startTime);
-      logFileOperation('rename', filePath, error, { duration, newName });
+      logger.fileOperation('rename', filePath, error, { duration: timer.elapsed(), newName });
       handleFileError('rename', filePath, error, res);
     }
   }));
 
   app.post('/api/files/copy', asyncHandler(async (req, res) => {
     const { path: filePath, newPath: destPath } = req.body;
-    const startTime = startTiming();
+    const timer = createTimer();
 
     validate()
       .required('filePath', filePath)
@@ -228,17 +202,15 @@ export function registerFileRoutes(app, container) {
       .execute();
 
     try {
-      const realPath = validateAndResolvePath(filePath);
-      const realDest = validateAndResolvePath(destPath);
+      const realPath = validatePath(filePath);
+      const realDest = validatePath(destPath);
       await fs.ensureDir(path.dirname(realDest));
       await fs.copy(realPath, realDest);
-      const duration = getDuration(startTime);
-      logFileSuccess('copy', filePath, duration, { destination: destPath });
+      logger.fileSuccess('copy', filePath, timer.elapsed(), { destination: destPath });
       broadcastFileEvent('file-copied', filePath, { destPath: destPath });
       res.json(formatResponse({ sourcePath: realPath, destPath: realDest, success: true }));
     } catch (error) {
-      const duration = getDuration(startTime);
-      logFileOperation('copy', filePath, error, { duration, destination: destPath });
+      logger.fileOperation('copy', filePath, error, { duration: timer.elapsed(), destination: destPath });
       handleFileError('copy', filePath, error, res);
     }
   }));

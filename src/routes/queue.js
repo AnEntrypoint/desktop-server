@@ -1,116 +1,63 @@
 import { asyncHandler } from '../middleware/error-handler.js';
 import { taskQueueManager } from '@sequential/server-utilities';
-import { formatResponse, formatError } from '@sequential/response-formatting';
+import { formatResponse } from '@sequential/response-formatting';
+import { parseResourceId, requireResource } from '@sequential/route-helpers';
+import { throwNotFound } from '@sequential/error-handling';
 
 export function registerQueueRoutes(app, container) {
-  const stateManager = container.resolve('StateManager');
-
   app.post('/api/queue/enqueue', asyncHandler(async (req, res) => {
     const { taskName, args, options } = req.body;
-
-    if (!taskName) {
-      return res.status(400).json(formatError(400, {
-        code: 'MISSING_TASK_NAME',
-        message: 'taskName is required'
-      }));
-    }
-
-    const result = taskQueueManager.enqueue(taskName, args || [], options || {});
-    res.json(formatResponse(result));
+    if (!taskName) throwNotFound('taskName', 'required');
+    res.json(formatResponse(taskQueueManager.enqueue(taskName, args || [], options || {})));
   }));
 
   app.post('/api/queue/dequeue', asyncHandler(async (req, res) => {
     const dequeued = taskQueueManager.dequeue();
-
-    if (!dequeued) {
-      return res.json(formatResponse({ task: null }, { message: 'Queue is empty' }));
-    }
-
-    res.json(formatResponse({ id: dequeued.id, task: dequeued.task }));
+    res.json(formatResponse({ task: dequeued || null }));
   }));
 
-  app.post('/api/queue/:id/complete', asyncHandler(async (req, res) => {
-    const { id } = req.params;
+  app.post('/api/queue/:id/complete', parseResourceId('id'), asyncHandler(async (req, res) => {
     const { result } = req.body;
-    const taskId = parseInt(id);
-
-    const success = taskQueueManager.complete(taskId, result);
-
-    if (!success) {
-      return res.status(404).json(formatError(404, {
-        code: 'NOT_FOUND',
-        message: `Task ${id} not found in queue`
-      }));
-    }
-
+    const success = taskQueueManager.complete(req.resourceId, result);
+    if (!success) throwNotFound('Task', req.resourceId);
     res.json(formatResponse({
-      message: `Task ${id} completed`,
-      status: taskQueueManager.status(taskId)
+      message: `Task ${req.resourceId} completed`,
+      status: taskQueueManager.status(req.resourceId)
     }));
   }));
 
-  app.post('/api/queue/:id/fail', asyncHandler(async (req, res) => {
-    const { id } = req.params;
+  app.post('/api/queue/:id/fail', parseResourceId('id'), asyncHandler(async (req, res) => {
     const { error } = req.body;
-    const taskId = parseInt(id);
-
-    const success = taskQueueManager.fail(taskId, error || new Error('Task failed'));
-
-    if (!success) {
-      return res.status(404).json(formatError(404, {
-        code: 'NOT_FOUND',
-        message: `Task ${id} not found in queue`
-      }));
-    }
-
-    const status = taskQueueManager.status(taskId);
+    const success = taskQueueManager.fail(req.resourceId, error || new Error('Task failed'));
+    if (!success) throwNotFound('Task', req.resourceId);
+    const status = taskQueueManager.status(req.resourceId);
     res.json(formatResponse({
-      message: `Task ${id} failed (retries: ${status.retries}/${status.maxRetries})`,
+      message: `Task ${req.resourceId} failed (retries: ${status.retries}/${status.maxRetries})`,
       status
     }));
   }));
 
-  app.get('/api/queue/status/:id', asyncHandler(async (req, res) => {
-    const { id } = req.params;
-    const taskId = parseInt(id);
-    const status = taskQueueManager.status(taskId);
-
-    if (!status) {
-      return res.status(404).json(formatError(404, {
-        code: 'NOT_FOUND',
-        message: `Task ${id} not found`
-      }));
-    }
-
+  app.get('/api/queue/status/:id', parseResourceId('id'), asyncHandler(async (req, res) => {
+    const status = taskQueueManager.status(req.resourceId);
+    requireResource(status, 'Task', req.resourceId);
     res.json(formatResponse({ task: status }));
   }));
 
   app.get('/api/queue/list', asyncHandler(async (req, res) => {
-    const { taskName, status } = req.query;
     const filter = {};
-
-    if (taskName) filter.taskName = taskName;
-    if (status) filter.status = status;
-
+    if (req.query.taskName) filter.taskName = req.query.taskName;
+    if (req.query.status) filter.status = req.query.status;
     const tasks = taskQueueManager.list(filter);
-    res.json(formatResponse({
-      count: tasks.length,
-      tasks
-    }));
+    res.json(formatResponse({ count: tasks.length, tasks }));
   }));
 
   app.get('/api/queue/stats', asyncHandler(async (req, res) => {
-    const stats = taskQueueManager.getStats();
-    res.json(formatResponse({ stats }));
+    res.json(formatResponse({ stats: taskQueueManager.getStats() }));
   }));
 
   app.post('/api/queue/clear', asyncHandler(async (req, res) => {
     const count = taskQueueManager.queue.size;
     taskQueueManager.clear();
-
-    res.json(formatResponse({
-      message: `Cleared ${count} tasks from queue`,
-      cleared: count
-    }));
+    res.json(formatResponse({ message: `Cleared ${count} tasks from queue`, cleared: count }));
   }));
 }

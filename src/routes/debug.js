@@ -2,8 +2,10 @@ import { asyncHandler, getOperationLog } from '../middleware/error-handler.js';
 import { getFromCache, getRequestLog, CONFIG } from '@sequential/server-utilities';
 import { createError } from '@sequential/error-handling';
 import { formatResponse } from '@sequential/response-formatting';
+import { createServiceFactory } from '@sequential/service-factory';
 
 export function registerDebugRoutes(app, container) {
+  const { getStateManager } = createServiceFactory(container);
   app.get('/api/logs', asyncHandler((req, res) => {
     const filter = req.query.filter;
     const logs = getRequestLog(filter ? JSON.parse(filter) : null);
@@ -27,8 +29,7 @@ export function registerDebugRoutes(app, container) {
   }));
 
   app.get('/api/state/stats', asyncHandler((req, res) => {
-    const stateManager = container.resolve('StateManager');
-    const stats = stateManager.getCacheStats();
+    const stats = getStateManager().getCacheStats();
     res.json(formatResponse({ stats }));
   }));
 }
