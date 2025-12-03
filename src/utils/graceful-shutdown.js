@@ -1,11 +1,13 @@
 import { backgroundTaskManager } from '@sequential/server-utilities';
+import logger from '@sequential/sequential-logging';
+import { delay, withRetry } from '@sequential/async-patterns';
 
 export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool, taskScheduler) {
   const gracefulShutdown = (signal) => {
-    console.log(`\n\n[${signal}] Shutting down gracefully...`);
+    logger.info(`\n\n[${signal}] Shutting down gracefully...`);
 
     const shutdownTimeout = setTimeout(() => {
-      console.error('[TIMEOUT] Forced shutdown after 10 seconds');
+      logger.error('[TIMEOUT] Forced shutdown after 10 seconds');
       process.exit(1);
     }, 10000);
 
@@ -13,48 +15,48 @@ export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManage
       try {
         watcher.close();
       } catch (e) {
-        console.error('Error closing file watcher:', e.message);
+        logger.error('Error closing file watcher:', e);
       }
     });
 
     try {
       backgroundTaskManager.cleanup();
-      console.log('✓ Background tasks cleaned up');
+      logger.info('✓ Background tasks cleaned up');
     } catch (e) {
-      console.error('Error cleaning up background tasks:', e.message);
+      logger.error('Error cleaning up background tasks:', e);
     }
 
     (async () => {
       try {
         if (taskScheduler) {
           await taskScheduler.stop();
-          console.log('✓ Task scheduler stopped');
+          logger.info('✓ Task scheduler stopped');
         }
       } catch (e) {
-        console.error('Error stopping scheduler:', e.message);
+        logger.error('Error stopping scheduler:', e);
       }
 
       try {
         if (queueWorkerPool) {
           await queueWorkerPool.stop();
-          console.log('✓ Queue worker pool stopped');
+          logger.info('✓ Queue worker pool stopped');
         }
       } catch (e) {
-        console.error('Error stopping worker pool:', e.message);
+        logger.error('Error stopping worker pool:', e);
       }
 
       httpServer.close(async () => {
         try {
           if (stateManager) {
             await stateManager.shutdown();
-            console.log('✓ StateManager shutdown complete');
+            logger.info('✓ StateManager shutdown complete');
           }
         } catch (e) {
-          console.error('Error shutting down StateManager:', e.message);
+          logger.error('Error shutting down StateManager:', e);
         }
 
         clearTimeout(shutdownTimeout);
-        console.log('✓ HTTP server closed');
+        logger.info('✓ HTTP server closed');
         process.exit(0);
       });
     })();
@@ -64,7 +66,7 @@ export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManage
         try {
           ws.close(1001, 'Server shutting down');
         } catch (e) {
-          console.error('Error closing WebSocket:', e.message);
+          logger.error('Error closing WebSocket:', e);
         }
       }
     });

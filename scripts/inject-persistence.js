@@ -1,5 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
+import logger from '@sequential/sequential-logging';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
 
 const APPS_DIR = '../';
 const STORAGE_MANAGER_CODE = `
@@ -15,7 +17,7 @@ function createStorageManager(appId) {
           localStorage.setItem(expiryKey, expiryTime.toString());
         }
       } catch (error) {
-        console.error(\`[Storage] Failed to save state for \${appId}:\`, error);
+        logger.error(\`[Storage] Failed to save state for \${appId}:\`, error);
       }
     },
     load() {
@@ -28,7 +30,7 @@ function createStorageManager(appId) {
         const stateStr = localStorage.getItem(stateKey);
         return stateStr ? JSON.parse(stateStr) : null;
       } catch (error) {
-        console.error(\`[Storage] Failed to load state for \${appId}:\`, error);
+        logger.error(\`[Storage] Failed to load state for \${appId}:\`, error);
         return null;
       }
     },
@@ -37,7 +39,7 @@ function createStorageManager(appId) {
         localStorage.removeItem(stateKey);
         localStorage.removeItem(expiryKey);
       } catch (error) {
-        console.error(\`[Storage] Failed to clear state for \${appId}:\`, error);
+        logger.error(\`[Storage] Failed to clear state for \${appId}:\`, error);
       }
     }
   };
@@ -161,14 +163,14 @@ async function injectPersistence() {
     const htmlPath = path.join(APPS_DIR, appName, 'dist/index.html');
 
     if (!fs.existsSync(htmlPath)) {
-      console.log(`⚠️  Skipping ${appName} - HTML not found`);
+      logger.info(`⚠️  Skipping ${appName} - HTML not found`);
       continue;
     }
 
     let content = fs.readFileSync(htmlPath, 'utf8');
 
     if (content.includes('[Storage-Manager-Injected]')) {
-      console.log(`✅ ${appName} - Already has persistence`);
+      logger.info(`✅ ${appName} - Already has persistence`);
       continue;
     }
 
@@ -179,7 +181,7 @@ async function injectPersistence() {
       scriptTag = '<script type="module">';
     }
     if (scriptStartIdx === -1) {
-      console.log(`⚠️  Skipping ${appName} - No script tag found`);
+      logger.info(`⚠️  Skipping ${appName} - No script tag found`);
       continue;
     }
 
@@ -190,10 +192,10 @@ async function injectPersistence() {
     const updated = content.slice(0, insertIdx) + injection + content.slice(insertIdx);
 
     fs.writeFileSync(htmlPath, updated, 'utf8');
-    console.log(`✅ ${appName} - Persistence injected`);
+    logger.info(`✅ ${appName} - Persistence injected`);
   }
 
-  console.log('\n✨ localStorage persistence injected into all apps');
+  logger.info('\n✨ localStorage persistence injected into all apps');
 }
 
 injectPersistence().catch(console.error);
