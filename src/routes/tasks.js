@@ -1,6 +1,5 @@
-import { validateTaskName } from '@sequentialos/core';
+import { validateTaskName, validateParam, sanitizeInput } from '@sequentialos/core';
 import { createValidationError, throwNotFound } from '@sequentialos/error-handling';
-import { validateParam, sanitizeInput } from '@sequentialos/param-validation';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
 import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '@sequentialos/websocket-broadcaster';
 import { formatResponse } from '@sequentialos/response-formatting';

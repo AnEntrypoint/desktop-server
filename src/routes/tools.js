@@ -1,6 +1,5 @@
-import { validateTaskName } from '@sequentialos/core';
+import { validateTaskName, validateParam, validateRequired, validateType, sanitizeInput } from '@sequentialos/core';
 import { createError, createValidationError, throwValidationError, throwNotFound } from '@sequentialos/error-handling';
-import { validateParam, validateRequired, validateType, sanitizeInput } from '@sequentialos/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
 import { executeTaskWithTimeout } from '@sequentialos/server-utilities';
 import { formatResponse } from '@sequentialos/response-formatting';
