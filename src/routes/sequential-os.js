@@ -1,1 +1,1 @@
-export { registerSequentialOsRoutes } from '@sequential/sequential-os-http';
+export { registerSequentialOsRoutes } from '@sequentialos/sequential-os-http';

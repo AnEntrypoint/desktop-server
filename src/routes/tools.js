@@ -1,14 +1,14 @@
-import { validateTaskName } from '@sequential/core';
-import { createError, createValidationError, throwValidationError, throwNotFound } from '@sequential/error-handling';
-import { validateParam, validateRequired, validateType, sanitizeInput } from '@sequential/param-validation';
+import { validateTaskName } from '@sequentialos/core';
+import { createError, createValidationError, throwValidationError, throwNotFound } from '@sequentialos/error-handling';
+import { validateParam, validateRequired, validateType, sanitizeInput } from '@sequentialos/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { executeTaskWithTimeout } from '@sequential/server-utilities';
-import { formatResponse } from '@sequential/response-formatting';
-import { validateRequest } from '@sequential/request-validator';
-import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
-import { delay, withRetry } from '@sequential/async-patterns';
-import { createCRUDRouter, registerCRUDRoutes } from '@sequential/crud-router';
-import { injectDependencies } from '@sequential/dependency-middleware';
+import { executeTaskWithTimeout } from '@sequentialos/server-utilities';
+import { formatResponse } from '@sequentialos/response-formatting';
+import { validateRequest } from '@sequentialos/request-validator';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequentialos/timestamp-utilities';
+import { delay, withRetry } from '@sequentialos/async-patterns';
+import { createCRUDRouter, registerCRUDRoutes } from '@sequentialos/crud-router';
+import { injectDependencies } from '@sequentialos/dependency-middleware';
 
 export function registerToolRoutes(app, container) {
   const repository = container.resolve('ToolRepository');

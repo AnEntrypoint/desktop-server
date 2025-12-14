@@ -1,6 +1,6 @@
-import { backgroundTaskManager } from '@sequential/server-utilities';
-import logger from '@sequential/sequential-logging';
-import { delay, withRetry } from '@sequential/async-patterns';
+import { backgroundTaskManager } from '@sequentialos/server-utilities';
+import logger from '@sequentialos/sequential-logging';
+import { delay, withRetry } from '@sequentialos/async-patterns';
 
 export function setupGracefulShutdown(httpServer, wss, fileWatchers, stateManager, queueWorkerPool, taskScheduler) {
   const gracefulShutdown = (signal) => {

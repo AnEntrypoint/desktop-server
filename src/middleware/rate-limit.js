@@ -1,7 +1,7 @@
-import { createErrorResponse } from '@sequential/error-handling';
-import { CONFIG } from '@sequential/server-utilities';
-import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
-import { delay, withRetry } from '@sequential/async-patterns';
+import { createErrorResponse } from '@sequentialos/error-handling';
+import { CONFIG } from '@sequentialos/server-utilities';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequentialos/timestamp-utilities';
+import { delay, withRetry } from '@sequentialos/async-patterns';
 
 const RATE_LIMIT_MAP = new Map();
 const WS_CONNECTION_MAP = new Map();

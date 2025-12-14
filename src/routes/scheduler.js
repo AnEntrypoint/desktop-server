@@ -1,9 +1,9 @@
 import { asyncHandler } from '../middleware/error-handler.js';
-import { formatResponse } from '@sequential/response-formatting';
-import { parseResourceId, requireResource } from '@sequential/route-helpers';
-import { nowISO } from '@sequential/timestamp-utilities';
-import { throwValidationError, throwNotFound } from '@sequential/error-handling';
-import { createServiceFactory } from '@sequential/service-factory';
+import { formatResponse } from '@sequentialos/response-formatting';
+import { parseResourceId, requireResource } from '@sequentialos/route-helpers';
+import { nowISO } from '@sequentialos/timestamp-utilities';
+import { throwValidationError, throwNotFound } from '@sequentialos/error-handling';
+import { createServiceFactory } from '@sequentialos/service-factory';
 
 export function registerSchedulerRoutes(app, container) {
   const { getTaskScheduler } = createServiceFactory(container);

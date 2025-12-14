@@ -1,8 +1,8 @@
-import { backgroundTaskManager } from '@sequential/server-utilities';
+import { backgroundTaskManager } from '@sequentialos/server-utilities';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { formatResponse } from '@sequential/response-formatting';
-import { parseResourceId, requireResource, parsePagination } from '@sequential/route-helpers';
-import { throwValidationError, throwNotFound } from '@sequential/error-handling';
+import { formatResponse } from '@sequentialos/response-formatting';
+import { parseResourceId, requireResource, parsePagination } from '@sequentialos/route-helpers';
+import { throwValidationError, throwNotFound } from '@sequentialos/error-handling';
 
 export function registerBackgroundTaskRoutes(app) {
   app.post('/api/background-tasks/spawn', asyncHandler(async (req, res) => {

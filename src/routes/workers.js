@@ -1,8 +1,8 @@
 import { asyncHandler } from '../middleware/error-handler.js';
-import { formatResponse } from '@sequential/response-formatting';
-import { parseResourceId, requireResource } from '@sequential/route-helpers';
-import { throwNotFound } from '@sequential/error-handling';
-import { createServiceFactory } from '@sequential/service-factory';
+import { formatResponse } from '@sequentialos/response-formatting';
+import { parseResourceId, requireResource } from '@sequentialos/route-helpers';
+import { throwNotFound } from '@sequentialos/error-handling';
+import { createServiceFactory } from '@sequentialos/service-factory';
 
 export function registerWorkerRoutes(app, container) {
   const { getQueueWorkerPool } = createServiceFactory(container);
