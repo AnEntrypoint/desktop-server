@@ -4,7 +4,7 @@ import { asyncHandler } from '../middleware/error-handler.js';
 import { CONFIG, createTimer } from '@sequentialos/server-utilities';
 import { createServerError } from '@sequentialos/error-handling';
 import { writeFileAtomicString } from '@sequentialos/file-operations';
-import { validate, validatePath } from '@sequentialos/param-validation';
+import { validate, validatePath } from '@sequentialos/core';
 import { validateFileName } from '@sequentialos/core';
 import { formatResponse, formatError } from '@sequentialos/response-formatting';
 import { validateRequest } from '@sequentialos/request-validator';
