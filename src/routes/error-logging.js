@@ -1,9 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { broadcastBackgroundTaskEvent } from '@sequential/websocket-broadcaster';
-import logger from '@sequential/sequential-logging';
-import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
+import { broadcastBackgroundTaskEvent } from '@sequentialos/websocket-broadcaster';
+import logger from '@sequentialos/sequential-logging';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequentialos/timestamp-utilities';
 
 const ERROR_LOG_DIR = path.join(process.cwd(), '.sequential-errors');
 

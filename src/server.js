@@ -5,11 +5,11 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { AppRegistry } from './app-registry.js';
 import http from 'http';
-import logger from '@sequential/sequential-logging';
-import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
+import logger from '@sequentialos/sequential-logging';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequentialos/timestamp-utilities';
 
-import { createRequestLogger } from '@sequential/server-utilities';
-import { createRateLimitMiddleware } from '@sequential/input-sanitization';
+import { createRequestLogger } from '@sequentialos/server-utilities';
+import { createRateLimitMiddleware } from '@sequentialos/input-sanitization';
 import { createErrorHandler } from './middleware/error-handler.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { registerSequentialOsRoutes } from './routes/sequential-os.js';
@@ -26,7 +26,7 @@ import { registerStorageObserverRoutes } from './routes/storage-observer.js';
 import { registerBackgroundTaskRoutes } from './routes/background-tasks.js';
 import { registerErrorLoggingRoutes } from './routes/error-logging.js';
 import { registerHealthRoutes } from './routes/health.js';
-import { CONFIG, taskQueueManager, queueWorkerPool, taskScheduler } from '@sequential/server-utilities';
+import { CONFIG, taskQueueManager, queueWorkerPool, taskScheduler } from '@sequentialos/server-utilities';
 import { registerWorkerRoutes } from './routes/workers.js';
 import { registerSchedulerRoutes } from './routes/scheduler.js';
 import { setupDIContainer } from './utils/di-setup.js';
@@ -34,9 +34,9 @@ import { ensureDirectories, loadStateKit, initializeStateKit, validateEnvironmen
 import { setupHotReload, closeFileWatchers } from './utils/hot-reload.js';
 import { setupWebSocket } from './utils/websocket-setup.js';
 import { setupGracefulShutdown } from './utils/graceful-shutdown.js';
-import { StateManager, FileSystemAdapter } from '@sequential/persistent-state';
-import { backgroundTaskManager } from '@sequential/server-utilities';
-import { broadcastBackgroundTaskEvent } from '@sequential/websocket-broadcaster';
+import { StateManager, FileSystemAdapter } from '@sequentialos/persistent-state';
+import { backgroundTaskManager } from '@sequentialos/server-utilities';
+import { broadcastBackgroundTaskEvent } from '@sequentialos/websocket-broadcaster';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

@@ -1,11 +1,11 @@
-import { validateTaskName } from '@sequential/core';
-import { createValidationError, throwValidationError } from '@sequential/error-handling';
-import { validateParam, sanitizeInput } from '@sequential/param-validation';
+import { validateTaskName } from '@sequentialos/core';
+import { createValidationError, throwValidationError } from '@sequentialos/error-handling';
+import { validateParam, sanitizeInput } from '@sequentialos/param-validation';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { executeTaskWithTimeout, backgroundTaskManager } from '@sequential/server-utilities';
-import { formatResponse, formatError } from '@sequential/response-formatting';
-import { registerCRUDRoutes } from '@sequential/crud-router';
-import { createServiceFactory } from '@sequential/service-factory';
+import { executeTaskWithTimeout, backgroundTaskManager } from '@sequentialos/server-utilities';
+import { formatResponse, formatError } from '@sequentialos/response-formatting';
+import { registerCRUDRoutes } from '@sequentialos/crud-router';
+import { createServiceFactory } from '@sequentialos/service-factory';
 
 export function registerFlowRoutes(app, container) {
   const { getFlowRepository, getTaskRepository, getTaskService } = createServiceFactory(container);

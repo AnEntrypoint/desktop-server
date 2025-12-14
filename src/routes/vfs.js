@@ -1,9 +1,9 @@
 import path from 'path';
 import fs from 'fs-extra';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { CONFIG } from '@sequential/server-utilities';
-import { formatResponse } from '@sequential/response-formatting';
-import { throwValidationError, throwPathTraversal } from '@sequential/error-handling';
+import { CONFIG } from '@sequentialos/server-utilities';
+import { formatResponse } from '@sequentialos/response-formatting';
+import { throwValidationError, throwPathTraversal } from '@sequentialos/error-handling';
 
 const VALID_SCOPES = ['run', 'task', 'global'];
 

@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { asyncHandler } from '../middleware/error-handler.js';
-import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequentialos/timestamp-utilities';
 
 const ERROR_LOG_DIR = path.join(process.cwd(), '.sequential-errors');
 

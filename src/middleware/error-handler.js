@@ -1,5 +1,5 @@
-import { createErrorHandler as createAppErrorHandler } from '@sequential/error-handling';
-import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
+import { createErrorHandler as createAppErrorHandler } from '@sequentialos/error-handling';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequentialos/timestamp-utilities';
 
 const operationLog = [];
 

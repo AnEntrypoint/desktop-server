@@ -1,13 +1,13 @@
-import { validateTaskName } from '@sequential/core';
-import { createValidationError, throwNotFound } from '@sequential/error-handling';
-import { validateParam, sanitizeInput } from '@sequential/param-validation';
+import { validateTaskName } from '@sequentialos/core';
+import { createValidationError, throwNotFound } from '@sequentialos/error-handling';
+import { validateParam, sanitizeInput } from '@sequentialos/param-validation';
 import { asyncHandler, logOperation } from '../middleware/error-handler.js';
-import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '@sequential/websocket-broadcaster';
-import { formatResponse } from '@sequential/response-formatting';
-import { nowISO, createTimestamps, updateTimestamp } from '@sequential/timestamp-utilities';
-import { createServiceFactory } from '@sequential/service-factory';
-import { createEventBroadcaster } from '@sequential/event-broadcaster';
-import { createOperationLogger } from '@sequential/operation-logger';
+import { broadcastToRunSubscribers, broadcastToTaskSubscribers, broadcastTaskProgress } from '@sequentialos/websocket-broadcaster';
+import { formatResponse } from '@sequentialos/response-formatting';
+import { nowISO, createTimestamps, updateTimestamp } from '@sequentialos/timestamp-utilities';
+import { createServiceFactory } from '@sequentialos/service-factory';
+import { createEventBroadcaster } from '@sequentialos/event-broadcaster';
+import { createOperationLogger } from '@sequentialos/operation-logger';
 
 export function registerTaskRoutes(app, container) {
   const { getTaskRepository, getTaskService, getStateManager } = createServiceFactory(container);

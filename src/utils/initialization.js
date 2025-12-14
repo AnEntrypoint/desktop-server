@@ -4,9 +4,9 @@ import os from 'os';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { createServerError, createForbiddenError } from '@sequential/error-handling';
-import { validator } from '@sequential/core-config';
-import logger from '@sequential/sequential-logging';
+import { createServerError, createForbiddenError } from '@sequentialos/error-handling';
+import { validator } from '@sequentialos/core-config';
+import logger from '@sequentialos/sequential-logging';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

@@ -1,8 +1,8 @@
 import { asyncHandler } from '../middleware/error-handler.js';
-import { formatResponse } from '@sequential/response-formatting';
-import { nowISO } from '@sequential/timestamp-utilities';
-import { throwNotFound } from '@sequential/error-handling';
-import { createServiceFactory } from '@sequential/service-factory';
+import { formatResponse } from '@sequentialos/response-formatting';
+import { nowISO } from '@sequentialos/timestamp-utilities';
+import { throwNotFound } from '@sequentialos/error-handling';
+import { createServiceFactory } from '@sequentialos/service-factory';
 
 export function registerStorageObserverRoutes(app, container) {
   const { getTaskRepository, getFlowRepository, getStateManager } = createServiceFactory(container);
