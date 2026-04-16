@@ -3,6 +3,10 @@ import { asyncHandler } from '../middleware/error-handler.js';
 import { formatResponse } from '@sequentialos/response-formatting';
 import { throwNotFound } from '@sequentialos/error-handling';
 import { resolveAppPath } from '@sequentialos/app-path-resolver';
+import { createRequire } from 'module';
+
+var require = createRequire(import.meta.url);
+var module = { exports: {} };
 
 export function registerAppRoutes(app, appRegistry, __dirname) {
   app.get('/api/apps', asyncHandler(async (req, res) => {
